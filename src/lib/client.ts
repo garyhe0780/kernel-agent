@@ -1,0 +1,25 @@
+import type { Check, Definition, Principal, RecordData } from '@/kernel/definition'
+
+export type BusinessRecord = { id: string; data: RecordData; version: number; createdAt: string; updatedAt: string }
+export type Proposal = { id: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string }
+export type Snapshot = {
+  workspace: { id: string; name: string }
+  principal: Principal
+  capability: { version: number; definition: Definition }
+  records: BusinessRecord[]
+  changes: Proposal[]
+  executions: { id: string; action: string; outcome: string; actorName: string; actorKind: string; details: Record<string, unknown>; createdAt: string; recordId?: string | null }[]
+  tools: unknown[]
+}
+export type ActionResult = { status?: string; checks?: Check[]; change?: Proposal | null }
+
+export async function request<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, { credentials: 'same-origin', ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) })
+  const result = await response.json()
+  if (!response.ok) throw new Error(result.error || 'The request could not complete.')
+  return result
+}
+
+export const money = (cents: unknown) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(cents) / 100)
+export const date = (value: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value))
+export const shortId = (value: string) => value.slice(-6).toUpperCase()

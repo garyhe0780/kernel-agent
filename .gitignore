@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.output/
+.tanstack/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+src/routeTree.gen.ts
+*.log
+.DS_Store

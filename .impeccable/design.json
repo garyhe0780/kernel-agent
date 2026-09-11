@@ -1,0 +1,467 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-11T14:10:00.000Z",
+  "title": "Design System: Kernel",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Carbon Ink",
+        "canonical": "#11141a",
+        "tonalRamp": [
+          "oklch(18.0% 0.013 264.2)",
+          "oklch(28.0% 0.013 264.2)",
+          "oklch(40.0% 0.013 264.2)",
+          "oklch(52.0% 0.013 264.2)",
+          "oklch(64.0% 0.013 264.2)",
+          "oklch(76.0% 0.013 264.2)",
+          "oklch(86.0% 0.013 264.2)",
+          "oklch(95.0% 0.013 264.2)"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Ink Soft",
+        "canonical": "#1b2029",
+        "tonalRamp": [
+          "oklch(18.0% 0.019 262.1)",
+          "oklch(28.0% 0.019 262.1)",
+          "oklch(40.0% 0.019 262.1)",
+          "oklch(52.0% 0.019 262.1)",
+          "oklch(64.0% 0.019 262.1)",
+          "oklch(76.0% 0.019 262.1)",
+          "oklch(86.0% 0.019 262.1)",
+          "oklch(95.0% 0.019 262.1)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Cool Paper",
+        "canonical": "#f3f5f7",
+        "tonalRamp": [
+          "oklch(18.0% 0.003 247.9)",
+          "oklch(28.0% 0.003 247.9)",
+          "oklch(40.0% 0.003 247.9)",
+          "oklch(52.0% 0.003 247.9)",
+          "oklch(64.0% 0.003 247.9)",
+          "oklch(76.0% 0.003 247.9)",
+          "oklch(86.0% 0.003 247.9)",
+          "oklch(95.0% 0.003 247.9)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(18.0% 0.000 89.9)",
+          "oklch(28.0% 0.000 89.9)",
+          "oklch(40.0% 0.000 89.9)",
+          "oklch(52.0% 0.000 89.9)",
+          "oklch(64.0% 0.000 89.9)",
+          "oklch(76.0% 0.000 89.9)",
+          "oklch(86.0% 0.000 89.9)",
+          "oklch(95.0% 0.000 89.9)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "canonical": "#d8dde4",
+        "tonalRamp": [
+          "oklch(18.0% 0.011 256.7)",
+          "oklch(28.0% 0.011 256.7)",
+          "oklch(40.0% 0.011 256.7)",
+          "oklch(52.0% 0.011 256.7)",
+          "oklch(64.0% 0.011 256.7)",
+          "oklch(76.0% 0.011 256.7)",
+          "oklch(86.0% 0.011 256.7)",
+          "oklch(95.0% 0.011 256.7)"
+        ]
+      },
+      "quiet": {
+        "role": "neutral",
+        "displayName": "Quiet",
+        "canonical": "#5d6673",
+        "tonalRamp": [
+          "oklch(18.0% 0.023 257.5)",
+          "oklch(28.0% 0.023 257.5)",
+          "oklch(40.0% 0.023 257.5)",
+          "oklch(52.0% 0.023 257.5)",
+          "oklch(64.0% 0.023 257.5)",
+          "oklch(76.0% 0.023 257.5)",
+          "oklch(86.0% 0.023 257.5)",
+          "oklch(95.0% 0.023 257.5)"
+        ]
+      },
+      "body": {
+        "role": "neutral",
+        "displayName": "Body",
+        "canonical": "#16191f",
+        "tonalRamp": [
+          "oklch(18.0% 0.013 264.3)",
+          "oklch(28.0% 0.013 264.3)",
+          "oklch(40.0% 0.013 264.3)",
+          "oklch(52.0% 0.013 264.3)",
+          "oklch(64.0% 0.013 264.3)",
+          "oklch(76.0% 0.013 264.3)",
+          "oklch(86.0% 0.013 264.3)",
+          "oklch(95.0% 0.013 264.3)"
+        ]
+      },
+      "cobalt": {
+        "role": "primary",
+        "displayName": "Signal Cobalt",
+        "canonical": "#3159ec",
+        "tonalRamp": [
+          "oklch(18.0% 0.120 266.5)",
+          "oklch(28.0% 0.120 266.5)",
+          "oklch(40.0% 0.120 266.5)",
+          "oklch(52.0% 0.120 266.5)",
+          "oklch(64.0% 0.120 266.5)",
+          "oklch(76.0% 0.120 266.5)",
+          "oklch(86.0% 0.120 266.5)",
+          "oklch(95.0% 0.120 266.5)"
+        ]
+      },
+      "cobalt-ink": {
+        "role": "primary",
+        "displayName": "Cobalt Ink",
+        "canonical": "#1d3bb8",
+        "tonalRamp": [
+          "oklch(18.0% 0.120 266.4)",
+          "oklch(28.0% 0.120 266.4)",
+          "oklch(40.0% 0.120 266.4)",
+          "oklch(52.0% 0.120 266.4)",
+          "oklch(64.0% 0.120 266.4)",
+          "oklch(76.0% 0.120 266.4)",
+          "oklch(86.0% 0.120 266.4)",
+          "oklch(95.0% 0.120 266.4)"
+        ]
+      },
+      "cobalt-soft": {
+        "role": "primary",
+        "displayName": "Cobalt Soft",
+        "canonical": "#e4eaff",
+        "tonalRamp": [
+          "oklch(18.0% 0.029 273.1)",
+          "oklch(28.0% 0.029 273.1)",
+          "oklch(40.0% 0.029 273.1)",
+          "oklch(52.0% 0.029 273.1)",
+          "oklch(64.0% 0.029 273.1)",
+          "oklch(76.0% 0.029 273.1)",
+          "oklch(86.0% 0.029 273.1)",
+          "oklch(95.0% 0.029 273.1)"
+        ]
+      },
+      "cobalt-wash": {
+        "role": "primary",
+        "displayName": "Cobalt Wash",
+        "canonical": "#eef2ff",
+        "tonalRamp": [
+          "oklch(18.0% 0.029 273.1)",
+          "oklch(28.0% 0.029 273.1)",
+          "oklch(40.0% 0.029 273.1)",
+          "oklch(52.0% 0.029 273.1)",
+          "oklch(64.0% 0.029 273.1)",
+          "oklch(76.0% 0.029 273.1)",
+          "oklch(86.0% 0.029 273.1)",
+          "oklch(95.0% 0.029 273.1)"
+        ]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Review Amber",
+        "canonical": "#c4841d",
+        "tonalRamp": [
+          "oklch(18.0% 0.120 72.6)",
+          "oklch(28.0% 0.120 72.6)",
+          "oklch(40.0% 0.120 72.6)",
+          "oklch(52.0% 0.120 72.6)",
+          "oklch(64.0% 0.120 72.6)",
+          "oklch(76.0% 0.120 72.6)",
+          "oklch(86.0% 0.120 72.6)",
+          "oklch(95.0% 0.120 72.6)"
+        ]
+      },
+      "amber-soft": {
+        "role": "secondary",
+        "displayName": "Amber Soft",
+        "canonical": "#f6e7c6",
+        "tonalRamp": [
+          "oklch(18.0% 0.046 86.5)",
+          "oklch(28.0% 0.046 86.5)",
+          "oklch(40.0% 0.046 86.5)",
+          "oklch(52.0% 0.046 86.5)",
+          "oklch(64.0% 0.046 86.5)",
+          "oklch(76.0% 0.046 86.5)",
+          "oklch(86.0% 0.046 86.5)",
+          "oklch(95.0% 0.046 86.5)"
+        ]
+      },
+      "amber-ink": {
+        "role": "secondary",
+        "displayName": "Amber Ink",
+        "canonical": "#8a5b10",
+        "tonalRamp": [
+          "oklch(18.0% 0.103 72.2)",
+          "oklch(28.0% 0.103 72.2)",
+          "oklch(40.0% 0.103 72.2)",
+          "oklch(52.0% 0.103 72.2)",
+          "oklch(64.0% 0.103 72.2)",
+          "oklch(76.0% 0.103 72.2)",
+          "oklch(86.0% 0.103 72.2)",
+          "oklch(95.0% 0.103 72.2)"
+        ]
+      },
+      "success": {
+        "role": "neutral",
+        "displayName": "Success",
+        "canonical": "#1f7a4d",
+        "tonalRamp": [
+          "oklch(18.0% 0.110 156.8)",
+          "oklch(28.0% 0.110 156.8)",
+          "oklch(40.0% 0.110 156.8)",
+          "oklch(52.0% 0.110 156.8)",
+          "oklch(64.0% 0.110 156.8)",
+          "oklch(76.0% 0.110 156.8)",
+          "oklch(86.0% 0.110 156.8)",
+          "oklch(95.0% 0.110 156.8)"
+        ]
+      },
+      "success-soft": {
+        "role": "neutral",
+        "displayName": "Success Soft",
+        "canonical": "#d9f3e5",
+        "tonalRamp": [
+          "oklch(18.0% 0.110 156.8)",
+          "oklch(28.0% 0.110 156.8)",
+          "oklch(40.0% 0.110 156.8)",
+          "oklch(52.0% 0.110 156.8)",
+          "oklch(64.0% 0.110 156.8)",
+          "oklch(76.0% 0.110 156.8)",
+          "oklch(86.0% 0.110 156.8)",
+          "oklch(95.0% 0.110 156.8)"
+        ]
+      },
+      "danger": {
+        "role": "neutral",
+        "displayName": "Danger",
+        "canonical": "#b4232a",
+        "tonalRamp": [
+          "oklch(18.0% 0.120 24.6)",
+          "oklch(28.0% 0.120 24.6)",
+          "oklch(40.0% 0.120 24.6)",
+          "oklch(52.0% 0.120 24.6)",
+          "oklch(64.0% 0.120 24.6)",
+          "oklch(76.0% 0.120 24.6)",
+          "oklch(86.0% 0.120 24.6)",
+          "oklch(95.0% 0.120 24.6)"
+        ]
+      },
+      "danger-soft": {
+        "role": "neutral",
+        "displayName": "Danger Soft",
+        "canonical": "#f8d7d8",
+        "tonalRamp": [
+          "oklch(18.0% 0.120 24.6)",
+          "oklch(28.0% 0.120 24.6)",
+          "oklch(40.0% 0.120 24.6)",
+          "oklch(52.0% 0.120 24.6)",
+          "oklch(64.0% 0.120 24.6)",
+          "oklch(76.0% 0.120 24.6)",
+          "oklch(86.0% 0.120 24.6)",
+          "oklch(95.0% 0.120 24.6)"
+        ]
+      },
+      "nav-text": {
+        "role": "neutral",
+        "displayName": "Nav Text",
+        "canonical": "#c9d1de",
+        "tonalRamp": [
+          "oklch(18.0% 0.013 264.2)",
+          "oklch(28.0% 0.013 264.2)",
+          "oklch(40.0% 0.013 264.2)",
+          "oklch(52.0% 0.013 264.2)",
+          "oklch(64.0% 0.013 264.2)",
+          "oklch(76.0% 0.013 264.2)",
+          "oklch(86.0% 0.013 264.2)",
+          "oklch(95.0% 0.013 264.2)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Auth story headline only."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page, auth form, and dialog titles in Newsreader."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles in IBM Plex Sans."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Working copy, tables, and controls. Tabular figures on."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels; uppercase Quiet captions for tables and diffs."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay-medium",
+        "value": "0 16px 40px rgba(17, 20, 26, 0.12)",
+        "purpose": "Select popovers."
+      },
+      {
+        "name": "overlay-high",
+        "value": "0 24px 60px rgba(17, 20, 26, 0.22)",
+        "purpose": "Dialogs over the ink scrim."
+      },
+      {
+        "name": "tab-selected",
+        "value": "0 1px 2px rgba(17, 20, 26, 0.08)",
+        "purpose": "White selected pill inside the tab list."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-control",
+        "value": "140ms ease",
+        "purpose": "Button, switch, and ghost hover transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "980px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one committed next step in a region.",
+      "html": "<button class=\"ds-btn-primary\">Sign in</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.5rem; padding: 0.45rem 0.95rem; border: 1px solid transparent; border-radius: var(--radius, 0); background: var(--color-cobalt, #3159ec); color: #fff; font: 550 15px/1.5 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.01em; cursor: pointer; transition: background 140ms ease; } .ds-btn-primary:hover { background: var(--color-cobalt-ink, #1d3bb8); } .ds-btn-primary:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-cobalt, #3159ec) 45%, white); outline-offset: 1px; } .ds-btn-primary:active { background: var(--color-cobalt-ink, #1d3bb8); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action on paper.",
+      "html": "<button class=\"ds-btn-outline\">Stage next action</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.5rem; padding: 0.45rem 0.95rem; border: 1px solid var(--color-line, #d8dde4); border-radius: var(--radius, 0); background: var(--color-surface, #fff); color: #16191f; font: 550 15px/1.5 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.01em; cursor: pointer; transition: background 140ms ease, border-color 140ms ease; } .ds-btn-outline:hover { background: #eef1f6; } .ds-btn-outline:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-cobalt, #3159ec) 45%, white); outline-offset: 1px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Tertiary action; faint ink wash on hover.",
+      "html": "<button class=\"ds-btn-ghost\">Create an account</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2rem; padding: 0.25rem 0.7rem; border: 1px solid transparent; border-radius: var(--radius, 0); background: transparent; color: inherit; font: 550 0.875rem/1.5 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.01em; cursor: pointer; transition: background 140ms ease; } .ds-btn-ghost:hover { background: rgba(17, 20, 26, 0.06); } .ds-btn-ghost:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-cobalt, #3159ec) 45%, white); outline-offset: 1px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Surface field with a Line stroke and cobalt-mix focus ring.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Email address</span><input class=\"ds-input\" placeholder=\"alex@company.com\" /></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 0.4rem; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; } .ds-field-label { font-size: 0.8rem; font-weight: 550; color: #2b313b; } .ds-input { width: 100%; min-height: 2.5rem; padding: 0.5rem 0.75rem; border: 1px solid var(--color-line, #d8dde4); border-radius: var(--radius, 0); background: var(--color-surface, #fff); color: #16191f; font: 400 15px/1.5 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; } .ds-input:hover { border-color: #c4cad3; } .ds-input:focus { outline: 2px solid color-mix(in srgb, var(--color-cobalt, #3159ec) 45%, white); outline-offset: 1px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat white well for queues, inspectors, and policy.",
+      "html": "<section class=\"ds-card\"><header class=\"ds-card-header\"><h2 class=\"ds-card-title\">Operations queue</h2><p class=\"ds-card-desc\">12 requests in this workspace.</p></header></section>",
+      "css": ".ds-card { display: flex; flex-direction: column; gap: 0.85rem; padding: 1.1rem 1.15rem; border: 1px solid var(--color-line, #d8dde4); border-radius: var(--radius, 0); background: var(--color-surface, #fff); font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; color: #16191f; } .ds-card-header { display: flex; flex-direction: column; gap: 0.25rem; } .ds-card-title { margin: 0; font-size: 1rem; font-weight: 600; } .ds-card-desc { margin: 0; color: var(--color-quiet, #5d6673); font-size: 0.875rem; }"
+    },
+    {
+      "name": "Warning Badge",
+      "kind": "chip",
+      "refersTo": "badge-warning",
+      "description": "Pending, staged, and simulator \u2014 never a live-model cue.",
+      "html": "<span class=\"ds-badge-warning\">Simulator \u00b7 not a live model</span>",
+      "css": ".ds-badge-warning { display: inline-flex; align-items: center; width: fit-content; padding: 0.15rem 0.5rem; border-radius: var(--radius, 0); font: 600 0.72rem/1.3 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; text-transform: uppercase; background: var(--color-amber-soft, #f6e7c6); color: #8a5b10; }"
+    },
+    {
+      "name": "Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Ink-rail destination; selected state is ink-soft, not cobalt.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><button class=\"ds-nav-item\" type=\"button\">Workspace</button><button class=\"ds-nav-item ds-nav-item-current\" type=\"button\" aria-current=\"page\">Review <span class=\"ds-nav-count\">2</span></button></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem; background: var(--color-ink, #11141a); border-radius: var(--radius, 0); } .ds-nav-item { display: flex; align-items: center; gap: 0.65rem; width: 100%; min-height: 2.35rem; padding: 0.4rem 0.7rem; border: 0; border-radius: var(--radius, 0); background: transparent; color: #c9d1de; font: 400 15px/1.5 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-nav-item:hover { background: rgba(255,255,255,0.08); } .ds-nav-item:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-cobalt, #3159ec) 45%, white); outline-offset: 1px; } .ds-nav-item-current, .ds-nav-item[aria-current='page'] { background: var(--color-ink-soft, #1b2029); color: #fff; } .ds-nav-count { margin-left: auto; min-width: 1.25rem; padding: 0 0.35rem; border-radius: var(--radius, 0); background: #2a3140; color: #f6e7c6; font-size: 0.7rem; text-align: center; }"
+    },
+    {
+      "name": "Simulator Well",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Persistent rail block that stages a defined action and refuses live-agent chrome.",
+      "html": "<div class=\"ds-simulator\"><span class=\"ds-badge-warning\">Simulator \u00b7 not a live model</span><p>This agent picks a defined action and stages it. It does not call a language model or send a purchase.</p><button class=\"ds-btn-outline ds-simulator-btn\" type=\"button\">Stage next action</button></div>",
+      "css": ".ds-simulator { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.9rem; border-radius: var(--radius, 0); background: #1a2030; color: #d5dceb; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; } .ds-simulator p { margin: 0; font-size: 0.8rem; color: #9aa6b8; } .ds-simulator .ds-badge-warning { display: inline-flex; align-items: center; width: fit-content; padding: 0.15rem 0.5rem; border-radius: var(--radius, 0); font: 600 0.72rem/1.3 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; text-transform: uppercase; background: var(--color-amber-soft, #f6e7c6); color: #8a5b10; } .ds-simulator-btn { background: var(--color-surface, #fff); color: #16191f; border: 1px solid var(--color-line, #d8dde4); min-height: 2.5rem; padding: 0.45rem 0.95rem; border-radius: var(--radius, 0); font: 550 15px/1.5 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-simulator-btn:hover { background: #eef1f6; } .ds-simulator-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-cobalt, #3159ec) 45%, white); outline-offset: 1px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Operations Workbench",
+    "overview": "Kernel is a desk, not a dashboard. Dark ink navigation sits to the side like furniture; cool paper is the working surface. The interface is precise, operational, and non-theatrical. Density is a feature: operators scan requests, diffs, and checks at 15px, with tabular numbers, and without decorative chrome.\n\nBrand lives in the ink/paper split, in Newsreader titles that name the current job, and in the rarity of Signal Cobalt. Amber is not decoration \u2014 it marks review and the simulator, so a staged proposal never looks like a live agent. Confirmed rejections: theatrical agent glow, black \u201cnova\u201d primary buttons, sharp-corner admin kits, and Inter as the body face. Leftover shadcn tokens in the stylesheet are not the system.",
+    "keyCharacteristics": [
+      "Ink chrome, paper work surface, white cards",
+      "Newsreader for titles; IBM Plex Sans for work",
+      "One cobalt fill per region; outline and ghost do the rest",
+      "Amber reserved for review, pending, and the simulator",
+      "Flat surfaces; shadows only on overlays",
+      "Dense enough for actual operations, including at 980px"
+    ],
+    "rules": [
+      {
+        "name": "The One Voice Rule",
+        "body": "Signal Cobalt fills at most one primary control in a given region. Secondary actions are outline or ghost. Navigation chrome stays ink.",
+        "section": "colors"
+      },
+      {
+        "name": "The Quiet Token Rule",
+        "body": "Muted copy uses quiet. Never use the shadcn --muted / --color-muted variables for text \u2014 they resolve to a near-white wash.",
+        "section": "colors"
+      },
+      {
+        "name": "The Simulator Amber Rule",
+        "body": "Anything that is staged, pending, or simulated wears amber. Do not use cobalt or success to imply a live model.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Voice Rule",
+        "body": "Newsreader names the surface. IBM Plex runs the surface. Do not set body, tables, buttons, or badges in Newsreader. Do not set page titles in Plex or Inter.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces are flush at rest. Shadows are a response to overlay, not a way to make a card feel important.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep the ink rail and paper canvas as the spatial identity of every authenticated screen.",
+      "Do use Newsreader only for page, auth, and dialog titles; IBM Plex for everything an operator types or scans.",
+      "Do put Signal Cobalt on a single filled action per region, and Review Amber on pending / simulator / warning.",
+      "Do draw edges with 1px Line and --radius: 0; use overlay shadows only on select and dialog.",
+      "Do label the simulator as not a live model, in amber, whenever it is on screen."
+    ],
+    "donts": [
+      "Don't use Inter, a radius scale, pills, or near-black shadcn --primary fills \u2014 those leftovers are not Kernel.",
+      "Don't set --radius above 0 on bordered surfaces.",
+      "Don't paint navigation, headers, or card chrome in cobalt.",
+      "Don't use success green, cobalt, or agent sparkle to imply a live model.",
+      "Don't add rest-state drop shadows to cards or tables.",
+      "Don't switch body copy to --muted / --color-muted; that token is a near-white collision.",
+      "Don't invent a dark theme; .dark shadcn variables are unused by this product."
+    ]
+  }
+}

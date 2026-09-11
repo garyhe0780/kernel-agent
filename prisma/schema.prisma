@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  memberships   Membership[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([identifier])
+}
+
+model Workspace {
+  id           String       @id @default(cuid())
+  name         String
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+  capabilities Capability[]
+  records      BusinessRecord[]
+  changes      ChangeSet[]
+  executions   Execution[]
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  workspaceId String
+  role        String    @default("owner")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId])
+}
+
+model Capability {
+  id          String    @id @default(cuid())
+  workspaceId String
+  slug        String
+  version     Int       @default(1)
+  definition  Json
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  versions    CapabilityVersion[]
+  @@unique([workspaceId, slug])
+}
+
+model CapabilityVersion {
+  id           String     @id @default(cuid())
+  capabilityId String
+  version      Int
+  definition   Json
+  publishedBy  String
+  createdAt    DateTime   @default(now())
+  capability   Capability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  @@unique([capabilityId, version])
+}
+
+model BusinessRecord {
+  id          String    @id @default(cuid())
+  workspaceId String
+  capability  String
+  entity      String
+  data        Json
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, capability, entity])
+}
+
+model ChangeSet {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  capability        String
+  definitionVersion Int
+  recordId          String
+  recordVersion     Int
+  action            String
+  input             Json
+  before            Json
+  after             Json
+  checks            Json
+  status            String    @default("pending")
+  proposedBy        String
+  actorKind         String
+  idempotencyKey    String
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status, createdAt])
+}
+
+model Execution {
+  id          String    @id @default(cuid())
+  workspaceId String
+  recordId    String?
+  changeId    String?
+  action      String
+  outcome     String
+  actorId     String
+  actorName   String
+  actorKind   String
+  details     Json
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+}
