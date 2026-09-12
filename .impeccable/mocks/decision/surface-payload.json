@@ -1,0 +1,154 @@
+{
+  "title": "Choose the public site composition",
+  "question": "Landing statement and published notes share one Kernel page. The roll assigned Issue masthead. Three other challengers wait in the re-roll pool: algorave source floor, mezzotint plate, plankton wake.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Issue masthead",
+      "kicker": "THE ROLL",
+      "thesis": "The public site reads as one dated issue: a named masthead, one statement, then the notes.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["carbon ink header rule", "cool paper sheet", "square 1px line"],
+      "viewport": "Thin ink name, hairline, Newsreader statement at full width, then a flush list of published notes.",
+      "risk": "A masthead can look like a newspaper if the statement does not stay the first readable job.",
+      "raised": [
+        {
+          "from": "VU meter bridge",
+          "raise": "The first viewport shows the statement and several notes together, never a hero that hides the list."
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/assigned.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "site name", "x": 1, "y": 0, "w": 10, "h": 1 },
+          { "label": "rule", "x": 1, "y": 1, "w": 10, "h": 1 },
+          { "label": "landing statement", "x": 1, "y": 2, "w": 10, "h": 3, "accent": true },
+          { "label": "published notes", "x": 1, "y": 5, "w": 10, "h": 5 }
+        ]
+      }
+    },
+    {
+      "id": "scroll",
+      "label": "Single scroll brief",
+      "thesis": "One reading column: the landing is a letter, the notes continue the same measure.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper page", "single text measure", "hairline between entries"],
+      "viewport": "Centered column: statement, then dated notes stacked in one scroll with no sidebar.",
+      "risk": "Visitors may miss that the notes are a live list if they read as static copy.",
+      "comp": ".impeccable/mocks/decision/scroll.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "site name", "x": 2, "y": 0, "w": 8, "h": 1 },
+          { "label": "landing statement", "x": 2, "y": 1, "w": 8, "h": 3, "accent": true },
+          { "label": "note", "x": 2, "y": 4, "w": 8, "h": 2 },
+          { "label": "note", "x": 2, "y": 6, "w": 8, "h": 2 },
+          { "label": "note", "x": 2, "y": 8, "w": 8, "h": 2 }
+        ]
+      }
+    },
+    {
+      "id": "ledger",
+      "label": "Desk ledger",
+      "thesis": "The public page is the same desk as the workbench: statement on paper, notes in a flush ledger.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper canvas", "flush table rows", "cobalt on the single next step"],
+      "viewport": "Full-width statement card, then a dense table of published notes with title, date, and excerpt.",
+      "risk": "Can feel like the operator queue leaked onto a public URL.",
+      "comp": ".impeccable/mocks/decision/ledger.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "site name", "x": 0, "y": 0, "w": 12, "h": 1 },
+          { "label": "landing statement", "x": 0, "y": 1, "w": 12, "h": 3, "accent": true },
+          { "label": "ledger header", "x": 0, "y": 4, "w": 12, "h": 1 },
+          { "label": "note rows", "x": 0, "y": 5, "w": 12, "h": 5 }
+        ]
+      }
+    },
+    {
+      "id": "challenger-timetable",
+      "label": "Timetable rack",
+      "verdict": "competitive",
+      "lineage": "pocket airline timetable as a raked rack of slides",
+      "thesis": "Landing and notes stand as slides in one rack; rank is weight and reversal, not bigger type.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper slides", "1px rules", "one body size", "tick rail"],
+      "viewport": "A lateral rack: landing is the first slide, published notes occupy the next cells, a tick rail shows extent.",
+      "case": "Operators already scan queues laterally; the journal becomes a readable rack without a marketing hero.",
+      "risk": "A rake or tinted glass would fight Kernel's square paper; the rack must stay flush and ink/paper.",
+      "comp": ".impeccable/mocks/decision/challenger-timetable.webp",
+      "hero": "https://impeccable.style/worlds/cards/rw-timetable-slide-rack-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/rw-timetable-slide-rack.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "tick rail", "x": 0, "y": 0, "w": 12, "h": 1 },
+          { "label": "landing slide", "x": 0, "y": 1, "w": 4, "h": 8, "accent": true },
+          { "label": "note", "x": 4, "y": 1, "w": 4, "h": 8 },
+          { "label": "note", "x": 8, "y": 1, "w": 4, "h": 8 },
+          { "label": "position", "x": 0, "y": 9, "w": 12, "h": 1 }
+        ]
+      }
+    },
+    {
+      "id": "challenger-daylight",
+      "label": "Daylight section",
+      "verdict": "competitive",
+      "lineage": "architectural daylight section",
+      "thesis": "The page is one continuous section: the landing is the aperture, notes occupy timed rooms below.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper rooms", "charcoal section cut", "tabular timestamps"],
+      "viewport": "A left section mark, a large landing aperture, then stacked note rooms with dates as occupation stamps.",
+      "case": "Time-ordered notes map cleanly onto occupied rooms; the statement stays the light that enters first.",
+      "risk": "Section language can outrank the journal unless rooms read as notes immediately.",
+      "comp": ".impeccable/mocks/decision/challenger-daylight.webp",
+      "hero": "https://impeccable.style/worlds/cards/architecture-inhabitable-space-daylight-section-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/architecture-inhabitable-space-daylight-section.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "section cut", "x": 0, "y": 0, "w": 1, "h": 10 },
+          { "label": "landing aperture", "x": 1, "y": 0, "w": 11, "h": 4, "accent": true },
+          { "label": "note room", "x": 1, "y": 4, "w": 11, "h": 2 },
+          { "label": "note room", "x": 1, "y": 6, "w": 11, "h": 2 },
+          { "label": "note room", "x": 1, "y": 8, "w": 11, "h": 2 }
+        ]
+      }
+    },
+    {
+      "id": "challenger-vu",
+      "label": "VU meter bridge",
+      "verdict": "declined",
+      "lineage": "recording-desk VU meter row",
+      "thesis": "Landing and notes as identical channels you sweep in one row.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["identical columns", "paper faces", "one cobalt mark"],
+      "viewport": "A shoulder-to-shoulder row of equal panels: statement, then notes, read by sweeping.",
+      "case": "Fuses poorly: journal visitors do not identify with a recording bridge.",
+      "kept": "The first viewport must show the statement and several notes together, not a hero that hides the list.",
+      "risk": "Meters and red peaks would invent a second identity Kernel does not own.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-vu-meter-bridge-hero.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "site name", "x": 0, "y": 0, "w": 12, "h": 1 },
+          { "label": "landing", "x": 0, "y": 2, "w": 4, "h": 6, "accent": true },
+          { "label": "note", "x": 4, "y": 2, "w": 4, "h": 6 },
+          { "label": "note", "x": 8, "y": 2, "w": 4, "h": 6 }
+        ]
+      }
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "code", "toggle": true },
+  "steer": true,
+  "canon": false
+}

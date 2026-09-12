@@ -66,10 +66,24 @@ model Workspace {
   name         String
   createdAt    DateTime     @default(now())
   memberships  Membership[]
+  projects     Project[]
   capabilities Capability[]
   records      BusinessRecord[]
   changes      ChangeSet[]
   executions   Execution[]
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  workspaceId String
+  slug        String
+  name        String
+  shell       String
+  packages    Json
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
 }
 
 model Membership {

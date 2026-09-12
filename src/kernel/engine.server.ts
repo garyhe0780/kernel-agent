@@ -1,5 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client'
 import { definitionSchema, evaluate, procurement, toolContracts, validateFields, type Principal, type RecordData } from './definition'
+import { catalog, catalogFor, composePublic, seedFor } from './packages'
+import { projectTemplates, sortProjects, toProjectSnapshot } from './projects'
 
 export class KernelError extends Error {
   constructor(public code: string, message: string, public status = 400) { super(message) }
@@ -25,16 +27,62 @@ export class Kernel {
     return tx.execution.create({ data: { workspaceId: p.workspaceId, actorId: p.userId, actorName: p.name, actorKind: p.kind, action, outcome, details: json(details), recordId, changeId } })
   }
 
+  private async installPackages(tx: Tx, workspaceId: string, userId: string, workspaceName: string) {
+    for (const pkg of catalog) {
+      const exists = await tx.capability.findUnique({ where: { workspaceId_slug: { workspaceId, slug: pkg.definition.slug } } })
+      if (exists) continue
+      await tx.capability.create({
+        data: {
+          workspaceId, slug: pkg.definition.slug, definition: json(pkg.definition),
+          versions: { create: { version: 1, definition: json(pkg.definition), publishedBy: userId } },
+        },
+      })
+      for (const seed of seedFor(pkg.definition.slug, workspaceName)) {
+        await tx.businessRecord.create({
+          data: {
+            workspaceId, capability: pkg.definition.slug, entity: seed.entity, data: json(seed.data),
+            createdAt: new Date(Date.now() - seed.hoursAgo * 3600000),
+          },
+        })
+      }
+    }
+  }
+
+  private async installProjects(tx: Tx, workspaceId: string) {
+    for (const template of projectTemplates) {
+      const exists = await tx.project.findUnique({ where: { workspaceId_slug: { workspaceId, slug: template.slug } } })
+      if (exists) continue
+      await tx.project.create({
+        data: {
+          workspaceId,
+          slug: template.slug,
+          name: template.name,
+          shell: template.shell,
+          packages: json(template.packages),
+        },
+      })
+    }
+  }
+
+  private async bootstrap(tx: Tx, workspaceId: string, userId: string, workspaceName: string) {
+    await this.installPackages(tx, workspaceId, userId, workspaceName)
+    await this.installProjects(tx, workspaceId)
+  }
+
   async ensureWorkspace(user: { id: string; name: string }) {
     const found = await this.db.membership.findUnique({ where: { userId: user.id } })
-    if (found) return found
+    if (found) {
+      const workspace = await this.db.workspace.findUniqueOrThrow({ where: { id: found.workspaceId } })
+      await this.db.$transaction(tx => this.bootstrap(tx, workspace.id, user.id, workspace.name))
+      return found
+    }
     try {
       return await this.db.$transaction(async tx => {
         const again = await tx.membership.findUnique({ where: { userId: user.id } })
         if (again) return again
         const workspace = await tx.workspace.create({ data: { name: `${user.name.split(' ')[0]}'s workspace` } })
         const member = await tx.membership.create({ data: { userId: user.id, workspaceId: workspace.id, role: 'owner' } })
-        await tx.capability.create({ data: { workspaceId: workspace.id, slug: procurement.slug, definition: json(procurement), versions: { create: { version: 1, definition: json(procurement), publishedBy: user.id } } } })
+        await this.bootstrap(tx, workspace.id, user.id, workspace.name)
         const examples = [
           { title: 'Design team software licenses', supplier: 'Figma', amountCents: 432000, category: 'Software', justification: 'Annual seats for the six-person product design team.', supplierVerified: true, status: 'submitted' },
           { title: 'Engineering monitors', supplier: 'Dell Technologies', amountCents: 284000, category: 'Equipment', justification: 'Four monitors for the incoming engineering team.', supplierVerified: true, status: 'submitted' },
@@ -46,7 +94,7 @@ export class Kernel {
         for (const [index, data] of examples.entries()) {
           await tx.businessRecord.create({ data: { workspaceId: workspace.id, capability: 'procurement', entity: 'purchase_request', data: { ...data, decisionNote: '' }, createdAt: new Date(Date.now() - (examples.length - index) * 3600000) } })
         }
-        await this.event(tx, { userId: user.id, name: user.name, workspaceId: workspace.id, role: 'owner', kind: 'human' }, 'workspace.create', 'applied', { message: 'Private workspace created with six example requests and procurement v1. Example approvals are seeded data, not executed purchases.' })
+        await this.event(tx, { userId: user.id, name: user.name, workspaceId: workspace.id, role: 'owner', kind: 'human' }, 'workspace.create', 'applied', { message: 'Private workspace created with Site, Procurement, and operations projects. Seeded records are example data, not executed work or published claims.' })
         return member
       })
     } catch (error) {
@@ -57,28 +105,69 @@ export class Kernel {
     }
   }
 
-  async snapshot(p: Principal) {
+  async snapshot(p: Principal, projectSlug?: string) {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
-      const cap = await this.capability(tx, p.workspaceId)
-      const [workspace, records, changes, executions] = await Promise.all([
-        tx.workspace.findUniqueOrThrow({ where: { id: p.workspaceId } }),
-        tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: cap.slug }, orderBy: { createdAt: 'desc' } }),
+      const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: p.workspaceId } })
+      await this.bootstrap(tx, workspace.id, p.userId, workspace.name)
+      const projectRows = sortProjects(await tx.project.findMany({ where: { workspaceId: p.workspaceId } }))
+      const projects = projectRows.map(toProjectSnapshot)
+      const caps = await tx.capability.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { slug: 'asc' } })
+      const allCapabilities = caps.map(cap => ({ ...cap, definition: definitionSchema.parse(cap.definition) }))
+      const [allRecords, allChanges, allExecutions] = await Promise.all([
+        tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { createdAt: 'desc' } }),
         tx.changeSet.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { createdAt: 'desc' }, take: 100 }),
         tx.execution.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { createdAt: 'desc' }, take: 100 }),
       ])
-      return { workspace, capability: cap, records, changes, executions, tools: toolContracts(cap.definition), principal: p }
+      const current = projectSlug ? projects.find(item => item.slug === projectSlug) : undefined
+      if (projectSlug && !current) throw new KernelError('NOT_FOUND', 'Project not found.', 404)
+      const slugs = current ? new Set(current.packages) : undefined
+      const capabilities = current
+        ? current.packages.map(slug => allCapabilities.find(cap => cap.slug === slug)).filter((cap): cap is typeof allCapabilities[number] => Boolean(cap))
+        : allCapabilities
+      const records = slugs ? allRecords.filter(record => slugs.has(record.capability)) : allRecords
+      const recordIds = new Set(records.map(record => record.id))
+      const changes = slugs ? allChanges.filter(change => slugs.has(change.capability)) : allChanges
+      const executions = slugs ? allExecutions.filter(event => {
+        if (event.recordId) return recordIds.has(event.recordId)
+        if (event.action === 'capability.publish') return slugs.has(procurement.slug)
+        return slugs.has(event.action.split('.')[0] ?? '')
+      }) : allExecutions
+      const installed = current ? catalogFor(current.packages) : catalog
+      const tools = capabilities.flatMap(cap => toolContracts(cap.definition))
+      const capability = (current
+        ? capabilities.find(cap => cap.slug === current.packages[0])
+        : capabilities.find(cap => cap.slug === procurement.slug)) ?? capabilities[0]
+      return { workspace, project: current, projects, capability, capabilities, records, changes, executions, tools, catalog: installed, principal: p }
     })
   }
 
-  async createRecord(p: Principal, raw: unknown) {
+  async publicSite(workspaceId: string) {
+    const workspace = await this.db.workspace.findUnique({ where: { id: workspaceId } })
+    if (!workspace) throw new KernelError('NOT_FOUND', 'Workspace not found.', 404)
+    const [records, projectRows] = await Promise.all([
+      this.db.businessRecord.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' } }),
+      this.db.project.findMany({ where: { workspaceId } }),
+    ])
+    const siteProject = sortProjects(projectRows.map(toProjectSnapshot)).find(item => item.shell === 'site')
+    const installed = siteProject ? catalogFor(siteProject.packages) : catalogFor(['site', 'blog'])
+    return {
+      workspace: { id: workspace.id, name: workspace.name },
+      example: true,
+      blocks: composePublic(records.map(record => ({
+        id: record.id, capability: record.capability, data: record.data as RecordData, createdAt: record.createdAt,
+      })), installed),
+    }
+  }
+
+  async createRecord(p: Principal, raw: unknown, slug = 'procurement') {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       if (!['owner', 'operator'].includes(p.role)) throw new KernelError('FORBIDDEN', 'Your role cannot create records.', 403)
-      const cap = await this.capability(tx, p.workspaceId)
+      const cap = await this.capability(tx, p.workspaceId, slug)
       const data = validateFields(cap.definition.entity.fields, raw, true)
       const record = await tx.businessRecord.create({ data: { workspaceId: p.workspaceId, capability: cap.slug, entity: cap.definition.entity.name, data: json(data) } })
-      await this.event(tx, p, 'record.create', 'applied', { title: data.title, version: 1 }, record.id)
+      await this.event(tx, p, 'record.create', 'applied', { title: data.title, capability: cap.slug, version: 1 }, record.id)
       return record
     })
   }
@@ -144,7 +233,7 @@ export class Kernel {
       await this.authorize(tx, p)
       if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only the workspace owner can publish policies.', 403)
       if (!Number.isSafeInteger(settings.approvalLimitCents) || settings.approvalLimitCents < 1 || settings.approvalLimitCents > 100000000 || typeof settings.requireVerifiedSupplier !== 'boolean') throw new KernelError('INVALID_SETTINGS', 'Invalid procurement policy settings.')
-      const cap = await this.capability(tx, p.workspaceId)
+      const cap = await this.capability(tx, p.workspaceId, 'procurement')
       const definition = definitionSchema.parse({ ...cap.definition, settings: { ...cap.definition.settings, ...settings } })
       const changed = await tx.capability.updateMany({ where: { id: cap.id, workspaceId: p.workspaceId, version: expectedVersion }, data: { definition: json(definition), version: { increment: 1 } } })
       if (changed.count !== 1) throw new KernelError('STALE_DEFINITION', 'A newer capability version exists. Refresh before publishing.', 409)

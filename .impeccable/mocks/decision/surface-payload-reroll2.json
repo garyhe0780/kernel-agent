@@ -1,0 +1,148 @@
+{
+  "title": "Choose the public site composition",
+  "question": "You asked for a public journal, not an app shell. The starship elbow console was dropped for that reason. The roll assigned Folio with catchwords.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Folio with catchwords",
+      "kicker": "THE ROLL",
+      "thesis": "The public site is one opened folio: the landing is the first leaf, each note hands you to the next with a catchword.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper leaves", "catchword in quiet type", "1px gutter rule"],
+      "viewport": "Newsreader statement on the first leaf; two or three notes already visible below, each ending with the next title in quiet type.",
+      "risk": "Catchwords can feel bibliographic if they outrank the note titles.",
+      "raised": [
+        { "from": "Variable type specimen", "raise": "Hierarchy is scale contrast alone: the landing is the giant first word, notes stay on one measure." },
+        { "from": "Merz collage", "raise": "Opening one note does not reshuffle the others; the folio keeps its order." }
+      ],
+      "comp": ".impeccable/mocks/decision/assigned.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "running name", "x": 1, "y": 0, "w": 10, "h": 1 },
+          { "label": "landing leaf", "x": 1, "y": 1, "w": 10, "h": 3, "accent": true },
+          { "label": "note + catchword", "x": 1, "y": 4, "w": 10, "h": 2 },
+          { "label": "note + catchword", "x": 1, "y": 6, "w": 10, "h": 2 },
+          { "label": "note + catchword", "x": 1, "y": 8, "w": 10, "h": 2 }
+        ]
+      }
+    },
+    {
+      "id": "margin",
+      "label": "Margin chronicle",
+      "thesis": "Dates live in a wide margin; the body is one continuous journal you read down the page.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["wide quiet margin", "one text measure", "hairline between entries"],
+      "viewport": "Left margin of dates, right column: landing standfirst then published notes in the same voice, several already on screen.",
+      "risk": "A wide margin can look like an admin inspector if the dates become metadata chips.",
+      "comp": ".impeccable/mocks/decision/margin.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "dates", "x": 0, "y": 0, "w": 2, "h": 10 },
+          { "label": "landing", "x": 2, "y": 0, "w": 9, "h": 3, "accent": true },
+          { "label": "note", "x": 2, "y": 3, "w": 9, "h": 2 },
+          { "label": "note", "x": 2, "y": 5, "w": 9, "h": 2 },
+          { "label": "note", "x": 2, "y": 7, "w": 9, "h": 3 }
+        ]
+      }
+    },
+    {
+      "id": "running",
+      "label": "Running header journal",
+      "thesis": "Site name as a running head; the landing is the first paragraph of a magazine that continues into notes.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper page", "running head", "article rules"],
+      "viewport": "Quiet running head, large first paragraph, then article-length notes in the same column with titles in Newsreader.",
+      "risk": "Can collapse into a generic blog if the first paragraph is not clearly the landing record.",
+      "comp": ".impeccable/mocks/decision/running.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "running head", "x": 2, "y": 0, "w": 8, "h": 1 },
+          { "label": "first paragraph", "x": 2, "y": 1, "w": 8, "h": 3, "accent": true },
+          { "label": "article", "x": 2, "y": 4, "w": 8, "h": 2 },
+          { "label": "article", "x": 2, "y": 6, "w": 8, "h": 2 },
+          { "label": "article", "x": 2, "y": 8, "w": 8, "h": 2 }
+        ]
+      }
+    },
+    {
+      "id": "challenger-specimen",
+      "label": "Type specimen",
+      "verdict": "competitive",
+      "lineage": "interactive type specimen",
+      "thesis": "The landing is one enormous Newsreader setting; published notes occupy the specimen grid beneath, hierarchy by scale alone.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper ground", "giant serif", "strict baseline", "tiny Plex labels"],
+      "viewport": "A huge landing title filling the first screen’s upper half; notes in a measured grid below, already readable.",
+      "case": "Readers identify a publication immediately; scale does the persuading without an app frame.",
+      "risk": "A foundry demo can outrank the journal if the giant word is the product name instead of the landing statement.",
+      "comp": ".impeccable/mocks/decision/challenger-specimen.webp",
+      "hero": "https://impeccable.style/worlds/cards/variable-font-specimen-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/variable-font-specimen.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "giant statement", "x": 0, "y": 0, "w": 12, "h": 5, "accent": true },
+          { "label": "note", "x": 0, "y": 5, "w": 4, "h": 5 },
+          { "label": "note", "x": 4, "y": 5, "w": 4, "h": 5 },
+          { "label": "note", "x": 8, "y": 5, "w": 4, "h": 5 }
+        ]
+      }
+    },
+    {
+      "id": "challenger-merz",
+      "label": "Merz collage",
+      "verdict": "declined",
+      "lineage": "dada assemblage page",
+      "thesis": "Notes as pasted scraps with no dominant reading axis.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["paper scraps", "mixed sizes", "no axis"],
+      "viewport": "A pinboard of landing and notes at angles.",
+      "case": "Fuses poorly: a journal needs a reading order, and scraps read as art direction not publication.",
+      "kept": "Opening one note does not reshuffle the folio.",
+      "risk": "Angles, mixed faces, and a pinboard are an app of another kind.",
+      "hero": "https://impeccable.style/worlds/cards/design-canon-merz-collage-page-hero.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "scrap", "x": 1, "y": 1, "w": 5, "h": 4, "accent": true },
+          { "label": "scrap", "x": 6, "y": 0, "w": 5, "h": 3 },
+          { "label": "scrap", "x": 3, "y": 5, "w": 7, "h": 4 }
+        ]
+      }
+    },
+    {
+      "id": "challenger-teletext",
+      "label": "Teletext magazine",
+      "verdict": "declined",
+      "lineage": "broadcast teletext",
+      "thesis": "Keyed pages on a character grid.",
+      "palette": ["#11141a", "#f3f5f7", "#ffffff", "#3159ec", "#d8dde4"],
+      "materials": ["cell grid", "double-height header"],
+      "viewport": "Page 100 index, notes as numbered pages.",
+      "case": "Fuses poorly: it is an addressable console, the app shell you asked to avoid.",
+      "kept": "Notes remain addressable without becoming an index UI.",
+      "risk": "Black mosaic and keyed pages cannot wear Kernel’s paper journal.",
+      "hero": "https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "header", "x": 0, "y": 0, "w": 12, "h": 2, "accent": true },
+          { "label": "rows", "x": 0, "y": 2, "w": 12, "h": 8 }
+        ]
+      }
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "code", "toggle": true },
+  "steer": true,
+  "canon": false
+}

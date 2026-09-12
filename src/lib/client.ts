@@ -1,15 +1,28 @@
 import type { Check, Definition, Principal, RecordData } from '@/kernel/definition'
+import type { Package, PublicBlock } from '@/kernel/packages'
+import type { ProjectSnapshot } from '@/kernel/projects'
 
-export type BusinessRecord = { id: string; data: RecordData; version: number; createdAt: string; updatedAt: string }
-export type Proposal = { id: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string }
+export type BusinessRecord = { id: string; capability: string; entity: string; data: RecordData; version: number; createdAt: string; updatedAt: string }
+export type CapabilitySnapshot = { slug: string; version: number; definition: Definition }
+export type Proposal = { id: string; capability: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string }
+export type { ProjectSnapshot }
 export type Snapshot = {
   workspace: { id: string; name: string }
   principal: Principal
-  capability: { version: number; definition: Definition }
+  project?: ProjectSnapshot
+  projects: ProjectSnapshot[]
+  capability: CapabilitySnapshot
+  capabilities: CapabilitySnapshot[]
+  catalog: Package[]
   records: BusinessRecord[]
   changes: Proposal[]
   executions: { id: string; action: string; outcome: string; actorName: string; actorKind: string; details: Record<string, unknown>; createdAt: string; recordId?: string | null }[]
   tools: unknown[]
+}
+export type PublicSitePayload = {
+  workspace: { id: string; name: string }
+  example: boolean
+  blocks: PublicBlock[]
 }
 export type ActionResult = { status?: string; checks?: Check[]; change?: Proposal | null }
 

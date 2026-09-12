@@ -28,10 +28,10 @@ The first version gives each account a private workspace and owner role. The dat
 
 ## Extension seams
 
-The evaluator consumes a Definition rather than procurement constants. Procurement bootstrap and the initial settings editor are product-specific. To add a second capability, move bootstrap into a package registry and make capability selection explicit in the human API and UI. Keep the generic evaluator free of vertical-specific conditions.
+The evaluator consumes a Definition rather than procurement constants. Bootstrap installs a package catalog (`src/kernel/packages.ts`) and project templates (`src/kernel/projects.ts`). A project owns a shell (`site` or `workbench`) and the package slugs installed in it. Each package is a definition plus a public view kind (`hero`, `article-list`, or `none`). `composePublic` selects published records for the Site project's packages that declare a view; `composeEditorial` includes drafts for the Site operate surface. Neither has procurement-specific branches. Keep the generic evaluator free of vertical-specific conditions. Adding a later site-building element means adding a package to the Site project with a definition, a view kind, and optional seed data.
 
 A future model adapter discovers contracts, reads authorized records, and invokes the agent staging endpoint. The first UI uses a deterministic simulator so model credentials are not needed. Nothing in this version performs external purchasing or executes arbitrary configuration code.
 
 ## Verification
 
-The integration suite creates an isolated SQLite database from the committed migration. It tests policies, identity boundaries, idempotency, stale definitions/records, rejected changes, reserved-field injection, and execution history. App HTTP verification covers real sign-up/session cookies and protected endpoints. UI accessibility comes from React Aria primitives and semantic composition; that does not replace a full browser and assistive-technology audit.
+The integration suite creates an isolated SQLite database from the committed migrations. It tests policies, identity boundaries, idempotency, stale definitions/records, rejected changes, reserved-field injection, execution history, and project-scoped snapshots. App HTTP verification covers real sign-up/session cookies and protected endpoints. UI accessibility comes from React Aria primitives and semantic composition; that does not replace a full browser and assistive-technology audit.

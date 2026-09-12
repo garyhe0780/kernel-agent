@@ -6,7 +6,7 @@ import type { Principal } from '../kernel/definition'
 
 const kernel = new Kernel(db)
 const commandSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('create'), data: z.record(z.string(), z.unknown()) }).strict(),
+  z.object({ type: z.literal('create'), capability: z.string().min(1).optional(), data: z.record(z.string(), z.unknown()) }).strict(),
   z.object({ type: z.literal('stage'), recordId: z.string().min(1), action: z.string().min(1), input: z.record(z.string(), z.unknown()).default({}), idempotencyKey: z.string().min(8).max(100) }).strict(),
   z.object({ type: z.literal('review'), changeId: z.string().min(1), decision: z.enum(['apply', 'reject']) }).strict(),
   z.object({ type: z.literal('policies'), expectedVersion: z.number().int().positive(), approvalLimitCents: z.number().int().min(1).max(100000000), requireVerifiedSupplier: z.boolean() }).strict(),
@@ -34,15 +34,16 @@ export async function handleKernel(request: Request, agent = false) {
     if (request.method === 'POST') checkOrigin(request)
     const p = await principal(request, agent ? 'agent' : 'human')
     if (request.method === 'GET') {
-      const state = await kernel.snapshot(p)
-      return response(agent ? { tools: state.tools, records: state.records, capabilityVersion: state.capability.version, mode: 'Authenticated tools; proposals require human review.' } : state)
+      const project = new URL(request.url).searchParams.get('project') ?? undefined
+      const state = await kernel.snapshot(p, project)
+      return response(agent ? { tools: state.tools, records: state.records, capabilities: state.capabilities.map(cap => ({ slug: cap.slug, version: cap.version })), project: state.project?.slug, mode: 'Authenticated tools; proposals require human review.' } : state)
     }
     const text = await request.text()
     if (text.length > 32000) throw new KernelError('TOO_LARGE', 'Request exceeds the size limit.', 413)
     const command = commandSchema.parse(JSON.parse(text))
     if (agent && command.type !== 'stage') throw new KernelError('FORBIDDEN', 'The agent endpoint can only stage proposals.', 403)
     switch (command.type) {
-      case 'create': return response(await kernel.createRecord(p, command.data))
+      case 'create': return response(await kernel.createRecord(p, command.data, command.capability ?? 'procurement'))
       case 'stage': return response(await kernel.stage(p, command))
       case 'review': return response(await kernel.review(p, command.changeId, command.decision))
       case 'policies': return response(await kernel.updatePolicies(p, command.expectedVersion, { approvalLimitCents: command.approvalLimitCents, requireVerifiedSupplier: command.requireVerifiedSupplier }))
@@ -53,5 +54,15 @@ export async function handleKernel(request: Request, agent = false) {
     if (error instanceof Error && !('code' in error)) return response({ error: error.message, code: 'INVALID_INPUT' }, 400)
     console.error('Kernel request failed', error instanceof Error ? error.name : 'Unknown error')
     return response({ error: 'The operation could not complete. Refresh and try again.', code: 'INTERNAL_ERROR' }, 500)
+  }
+}
+
+export async function handlePublic(workspaceId: string) {
+  try {
+    return response(await kernel.publicSite(workspaceId))
+  } catch (error) {
+    if (error instanceof KernelError) return response({ error: error.message, code: error.code }, error.status)
+    console.error('Public site failed', error instanceof Error ? error.name : 'Unknown error')
+    return response({ error: 'The public site could not be opened.', code: 'INTERNAL_ERROR' }, 500)
   }
 }

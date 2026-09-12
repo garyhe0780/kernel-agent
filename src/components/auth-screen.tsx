@@ -52,7 +52,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             </div>
           </div>
         </div>
-        <p className="auth-footnote">Local development edition · Procurement capability</p>
+        <p className="auth-footnote">Local development edition · Site, Procurement, operations, and Audit projects</p>
       </section>
       <section className="auth-form-area">
         <div className="auth-form-wrap">
@@ -62,7 +62,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           <h2>{signup ? 'Create your workspace' : 'Welcome back'}</h2>
           <p className="muted">
             {signup
-              ? 'Start with a private workspace and example purchase requests.'
+              ? 'Start with a private workspace. Site, Procurement, operations, and Audit projects are installed with example records.'
               : 'Sign in to continue working with your team and agents.'}
           </p>
           <Form
