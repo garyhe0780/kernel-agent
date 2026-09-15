@@ -1,0 +1,49 @@
+import { useState } from 'react'
+import { ArrowUp, ArrowDown, Plus, Trash2 } from 'lucide-react'
+import { Button } from './ui/button'
+import { Field, FieldGroup, FieldLabel } from './ui/form-field'
+import { Input } from './ui/input'
+import { Select } from './ui/select'
+import { applicationPresentation, type SavedView } from '@/kernel/application-views'
+import type { Application } from '@/kernel/application'
+import { fieldLabel } from '@/lib/project-ui'
+
+export function ApplicationViewEditor({ application, onChange, disabled }: { application: Application; onChange: (app: Application) => void; disabled: boolean }) {
+  const presentation = applicationPresentation(application)
+  const [selected, setSelected] = useState<string>()
+  const view = application.views.find(view => view.id === selected) ?? application.views[0]
+  const entity = application.entities.find(entity => entity.slug === view?.entity)
+  const update = (next: SavedView) => onChange({ ...application, views: application.views.map(view => view.id === next.id ? next : view) })
+  function move(index: number, step: number) {
+    const items = [...presentation.navigation]
+    ;[items[index], items[index + step]] = [items[index + step], items[index]]
+    onChange({ ...application, navigation: items })
+  }
+  return <details className="builder-definition"><summary>Navigation and saved views</summary><fieldset className="view-editor" disabled={disabled}><legend className="sr-only">Application navigation and views</legend>
+    <p className="muted">Sections appear in this order. Saved views belong to a section and filter its records; they do not restrict access.</p>
+    <div className="view-navigation-editor">{presentation.navigation.map((item, index) => <div className="view-navigation-row" key={item.entity}><Field value={item.label} maxLength={60} onChange={label => onChange({ ...application, navigation: presentation.navigation.map(row => row.entity === item.entity ? { ...row, label } : row) })}><FieldLabel>{application.entities.find(entity => entity.slug === item.entity)?.entity.label} section</FieldLabel><Input /></Field><Button variant="outline" size="icon" disabled={disabled || index === 0} aria-label={`Move ${item.label} up`} onPress={() => move(index, -1)}><ArrowUp /></Button><Button variant="outline" size="icon" disabled={disabled || index === presentation.navigation.length - 1} aria-label={`Move ${item.label} down`} onPress={() => move(index, 1)}><ArrowDown /></Button></div>)}</div>
+    <Select label="Starting view" value={application.startView ?? 'all'} onChange={value => onChange({ ...application, startView: value === 'all' ? null : value })} options={[{ value: 'all', label: 'All records in the first section' }, ...application.views.map(view => ({ value: view.id, label: view.name }))]} />
+    <div className="builder-actions"><h3>Saved views</h3><Button variant="outline" disabled={disabled || application.views.length >= 24} onPress={() => { const id = `view_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`; const entity = application.entities[0]; onChange({ ...application, views: [...application.views, { id, name: 'New view', entity: entity.slug, filters: [], sort: { field: '$createdAt', direction: 'desc' }, columns: [] }] }); setSelected(id) }}><Plus data-icon="inline-start" />Add view</Button></div>
+    {!view ? <p className="muted">Add a view for a recurring task, such as awaiting approval or active customers.</p> : <>
+      <Select label="Edit saved view" value={view.id} onChange={setSelected} options={application.views.map(view => ({ value: view.id, label: view.name }))} />
+      <FieldGroup><Field value={view.name} maxLength={60} onChange={name => update({ ...view, name })}><FieldLabel>View name</FieldLabel><Input /></Field>
+      <Select label="Records in this view" value={view.entity} onChange={entity => update({ ...view, entity, filters: [], columns: [], sort: { field: '$createdAt', direction: 'desc' } })} options={application.entities.map(entity => ({ value: entity.slug, label: entity.entity.label }))} /></FieldGroup>
+      {entity ? <>
+        <div className="builder-actions"><h4>Match all filters</h4><Button variant="outline" size="sm" disabled={disabled || view.filters.length >= 6} onPress={() => update({ ...view, filters: [...view.filters, { field: 'status', operator: 'eq', value: entity.entity.fields.status.options![0] }] })}>Add filter</Button></div>
+        {!view.filters.length ? <p className="muted">This view includes every record in its section.</p> : view.filters.map((filter, index) => {
+          const field = entity.entity.fields[filter.field]
+          const replace = (next: typeof filter) => update({ ...view, filters: view.filters.map((item, position) => position === index ? next : item) })
+          return <div className="view-filter-editor" key={index}>
+            <Select label={`Filter ${index + 1} field`} value={filter.field} onChange={key => { const field = entity.entity.fields[key]; replace({ field: key, operator: 'eq', value: field.type === 'enum' ? field.options![0] : field.type === 'boolean' ? true : field.type === 'integer' ? field.min ?? 0 : '' }) }} options={Object.entries(entity.entity.fields).filter(([, field]) => !field.reference).map(([key, field]) => ({ value: key, label: fieldLabel(key, field.label) }))} />
+            <Select label={`Filter ${index + 1} comparison`} value={filter.operator} onChange={operator => replace({ ...filter, operator: operator as typeof filter.operator })} options={[{ value: 'eq', label: 'Equals' }, ...(field.type === 'integer' ? [{ value: 'lte', label: 'At most' }, { value: 'gte', label: 'At least' }] : [])]} />
+            {field.type === 'enum' || field.type === 'boolean' ? <Select label={`Filter ${index + 1} value`} value={String(filter.value)} onChange={value => replace({ ...filter, value: field.type === 'boolean' ? value === 'true' : value })} options={(field.type === 'boolean' ? ['true', 'false'] : field.options!).map(value => ({ value, label: value }))} /> : <Field value={String(filter.field.endsWith('Cents') && typeof filter.value === 'number' ? filter.value / 100 : filter.value)} type={field.type === 'integer' ? 'number' : 'text'} onChange={value => replace({ ...filter, value: field.type === 'integer' ? filter.field.endsWith('Cents') ? Math.round(Number(value) * 100) : Number(value) : value })}><FieldLabel>Filter {index + 1} value{filter.field.endsWith('Cents') ? ' (USD)' : ''}</FieldLabel><Input step={filter.field.endsWith('Cents') ? '0.01' : '1'} /></Field>}
+            <Button variant="ghost" size="icon" aria-label={`Remove filter ${index + 1}`} onPress={() => update({ ...view, filters: view.filters.filter((_, position) => position !== index) })}><Trash2 /></Button>
+          </div>
+        })}
+        <FieldGroup><Select label="Sort by" value={view.sort.field} onChange={field => update({ ...view, sort: { ...view.sort, field } })} options={[{ value: '$createdAt', label: 'Created time' }, ...Object.entries(entity.entity.fields).filter(([, field]) => !field.reference).map(([key, field]) => ({ value: key, label: fieldLabel(key, field.label) }))]} /><Select label="Sort direction" value={view.sort.direction} onChange={direction => update({ ...view, sort: { ...view.sort, direction: direction as 'asc' | 'desc' } })} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} /></FieldGroup>
+        <fieldset className="view-columns"><legend>Visible columns</legend><p className="muted">Leave all unchecked for the default table. Custom tables always include the title; choose up to eight columns.</p>{Object.entries(entity.entity.fields).map(([key, field]) => <label key={key}><input type="checkbox" checked={view.columns.includes(key)} disabled={disabled || (key === 'title' && view.columns.length > 0) || (!view.columns.includes(key) && view.columns.length >= 8)} onChange={event => { const columns = event.target.checked ? [...new Set(['title', ...view.columns, key])] : view.columns.filter(column => column !== key); update({ ...view, columns }) }} />{fieldLabel(key, field.label)}</label>)}<Button variant="ghost" size="sm" onPress={() => update({ ...view, columns: [] })}>Use default columns</Button></fieldset>
+      </> : null}
+      <Button variant="outline" onPress={() => { onChange({ ...application, views: application.views.filter(item => item.id !== view.id), startView: application.startView === view.id ? null : application.startView }); setSelected(undefined) }}><Trash2 data-icon="inline-start" />Remove view</Button>
+    </>}
+  </fieldset></details>
+}

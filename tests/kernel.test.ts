@@ -4,6 +4,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PrismaClient } from '@prisma/client'
+import { purchasingExample } from '../src/kernel/application'
+import { AgentAccess } from '../src/kernel/agent-access.server'
+import { handleAgentCredential } from '../src/lib/agent-api.server'
 import { Kernel, KernelError } from '../src/kernel/engine.server'
 import { evaluate, procurement, validateFields, type Principal, type RecordData } from '../src/kernel/definition'
 import { composePublic, composeEditorial } from '../src/kernel/packages'
@@ -17,6 +20,13 @@ before(async () => {
   const migrations = [
     new URL('../prisma/migrations/202609100001_initial/migration.sql', import.meta.url),
     new URL('../prisma/migrations/202609110001_projects/migration.sql', import.meta.url),
+    new URL('../prisma/migrations/202609120001_project_builder/migration.sql', import.meta.url),
+    new URL('../prisma/migrations/202609120002_application_versions/migration.sql', import.meta.url),
+    new URL('../prisma/migrations/202609120003_agent_credentials/migration.sql', import.meta.url),
+    new URL('../prisma/migrations/202609120004_builder_plans/migration.sql', import.meta.url),
+    new URL('../prisma/migrations/202609130001_multiple_workspaces/migration.sql', import.meta.url),
+    new URL('../prisma/migrations/202609130002_workspace_invitations/migration.sql', import.meta.url),
+    new URL('../prisma/migrations/202609130003_invitation_issuer/migration.sql', import.meta.url),
   ]
   for (const file of migrations) {
     const migration = readFileSync(file, 'utf8')
@@ -28,7 +38,7 @@ after(async () => { await db.$disconnect(); rmSync(folder, { recursive: true, fo
 async function fixture() {
   const id = `user-${++sequence}`
   await db.user.create({ data: { id, name: 'Test Operator', email: `${id}@example.test` } })
-  const member = await kernel.ensureWorkspace({ id, name: 'Test Operator' })
+  const member = await kernel.ensureWorkspace({ id, name: 'Test Operator' }, true)
   const human: Principal = { userId: id, name: 'Test Operator', workspaceId: member.workspaceId, role: member.role, kind: 'human' }
   const agent: Principal = { ...human, kind: 'agent' }
   const snapshot = await kernel.snapshot(human)
@@ -133,7 +143,7 @@ test('creation rejects unknown fields and direct status injection', async () => 
 test('revoked proposal permissions are checked again at apply', async () => {
   const { human, agent, record } = await fixture()
   const staged = await kernel.stage(agent, { recordId: record.id, action: 'approve', input: {}, idempotencyKey: 'revoke-proposer' })
-  await db.membership.update({ where: { userId: human.userId }, data: { role: 'viewer' } })
+  await db.membership.update({ where: { userId_workspaceId: { userId: human.userId, workspaceId: human.workspaceId } }, data: { role: 'viewer' } })
   await assert.rejects(kernel.review(human, staged.change!.id, 'apply'), /access/)
   await assert.rejects(kernel.review({ ...human, role: 'viewer' }, staged.change!.id, 'apply'), /review/)
 })
@@ -260,4 +270,702 @@ test('composeEditorial includes drafts and omits procurement', () => {
     ['site', ['1', '2']],
     ['blog', ['3']],
   ])
+})
+
+test('new accounts start empty and stay empty across snapshots', async () => {
+  const id = `user-${++sequence}`
+  await db.user.create({ data: { id, name: 'New Builder', email: `${id}@example.test` } })
+  const member = await kernel.ensureWorkspace({ id, name: 'New Builder' })
+  const p: Principal = { userId: id, name: 'New Builder', workspaceId: member.workspaceId, role: 'owner', kind: 'human' }
+  assert.equal((await kernel.snapshot(p)).projects.length, 0)
+  await kernel.ensureWorkspace({ id, name: 'New Builder' })
+  assert.equal((await kernel.snapshot(p)).records.length, 0)
+})
+
+test('draft publication is versioned, idempotent, isolated, and creates no example records', async () => {
+  const { purchasingExample } = await import('../src/kernel/application')
+  const { human, agent } = await fixture()
+  const other = await fixture()
+  const draft = await kernel.saveDraft(agent, { brief: 'Purchasing for our team', definition: purchasingExample(), source: 'example' })
+  assert.equal((await kernel.listDrafts(human))[0].id, draft.id)
+  assert.equal((await kernel.listDrafts(other.human)).length, 0)
+  await assert.rejects(kernel.getDraft(other.human, draft.id))
+  await assert.rejects(kernel.publishDraft(agent, draft.id, 1))
+  await assert.rejects(kernel.publishDraft(other.human, draft.id, 1))
+  const revised = await kernel.saveDraft(human, { id: draft.id, expectedVersion: 1, brief: draft.brief, definition: { ...purchasingExample(), name: 'Revised purchasing' }, source: 'manual' })
+  await assert.rejects(kernel.saveDraft(human, { id: draft.id, expectedVersion: 1, brief: draft.brief, definition: purchasingExample(), source: 'manual' }))
+  await assert.rejects(kernel.publishDraft(human, draft.id, 1))
+  const published = await kernel.publishDraft(human, draft.id, revised.version)
+  assert.equal((await kernel.publishDraft(human, draft.id, revised.version)).repeated, true)
+  const state = await kernel.snapshot(human, published.slug)
+  assert.equal(state.project?.name, 'Revised purchasing')
+  assert.equal(state.capabilities.length, 2)
+  assert.equal(state.records.length, 0)
+  assert.equal((await kernel.listDrafts(human)).length, 0)
+  assert.equal(await db.execution.count({ where: { workspaceId: human.workspaceId, action: 'project.publish' } }), 1)
+  for (const cap of state.capabilities) assert.equal(await db.capabilityVersion.count({ where: { capabilityId: cap.id } }), 1)
+})
+
+test('generated applications enforce relationships and support the full purchasing lifecycle', async () => {
+  const { purchasingExample } = await import('../src/kernel/application')
+  const { human, agent } = await fixture()
+  const app = purchasingExample()
+  const create = async () => {
+    const draft = await kernel.saveDraft(human, { brief: 'Purchasing for our team', definition: app, source: 'example' })
+    return (await kernel.publishDraft(human, draft.id, 1)).slug
+  }
+  const first = await create()
+  const second = await create()
+  const supplier = await kernel.createRecord(human, { title: 'Example supplier' }, `${first}__suppliers`)
+  const data = { title: 'Team monitors', supplier: supplier.id, amountCents: 10000, category: 'Equipment', justification: 'Equipment for the new team', supplierVerified: true }
+  await assert.rejects(kernel.createRecord(human, { ...data, supplier: '' }, `${first}__requests`))
+  await assert.rejects(kernel.createRecord(human, { ...data, supplier: 'missing' }, `${first}__requests`))
+  await assert.rejects(kernel.createRecord(human, data, `${second}__requests`))
+  const record = await kernel.createRecord(human, data, `${first}__requests`)
+  const submitted = await kernel.stage(agent, { recordId: record.id, action: 'submit', input: {}, idempotencyKey: 'generated-submit' })
+  await kernel.review(human, submitted.change!.id, 'apply')
+  const approved = await kernel.stage(agent, { recordId: record.id, action: 'approve', input: {}, idempotencyKey: 'generated-approve' })
+  await kernel.review(human, approved.change!.id, 'apply')
+  assert.equal(((await db.businessRecord.findUniqueOrThrow({ where: { id: record.id } })).data as RecordData).status, 'approved')
+  assert.equal((await kernel.snapshot(human, second)).records.length, 0)
+})
+
+test('application validation rejects broken definitions before saving', async () => {
+  const { purchasingExample, validateApplication } = await import('../src/kernel/application')
+  const brokenReference = purchasingExample()
+  brokenReference.entities[0].entity.fields.supplier.reference = 'unknown'
+  assert.throws(() => validateApplication(brokenReference))
+  const brokenAction = purchasingExample()
+  brokenAction.entities[0].actions[0].effects.unknown = 'bad'
+  assert.throws(() => validateApplication(brokenAction))
+  const brokenInput = purchasingExample()
+  brokenInput.entities[0].actions[0].effects.title = '$input.missing'
+  assert.throws(() => validateApplication(brokenInput))
+  const brokenRule = purchasingExample()
+  brokenRule.entities[0].actions[1].policies[0].setting = 'missing'
+  assert.throws(() => validateApplication(brokenRule))
+  const brokenDefault = purchasingExample()
+  brokenDefault.entities[0].entity.fields.status.default = 'unknown'
+  assert.throws(() => validateApplication(brokenDefault))
+})
+
+async function publishedFixture() {
+  const { purchasingExample } = await import('../src/kernel/application')
+  const f = await fixture()
+  const draft = await kernel.saveDraft(f.human, { brief: 'Purchasing application', definition: purchasingExample(), source: 'example' })
+  const { slug } = await kernel.publishDraft(f.human, draft.id, 1)
+  const supplier = await kernel.createRecord(f.human, { title: 'Existing supplier', contact: 'keep@example.test' }, `${slug}__suppliers`)
+  const record = await kernel.createRecord(f.human, { title: 'Existing request', supplier: supplier.id, amountCents: 10000, category: 'Equipment', justification: 'Preserve this business data', supplierVerified: true }, `${slug}__requests`)
+  return { ...f, slug, supplier, record }
+}
+
+async function revisedDraft(human: Principal, slug: string, revise: (app: import('../src/kernel/application').Application) => void) {
+  const { validateApplication } = await import('../src/kernel/application')
+  const draft = await kernel.editProject(human, slug)
+  const app = validateApplication(draft.definition)
+  revise(app)
+  return kernel.saveDraft(human, { id: draft.id, expectedVersion: draft.version, definition: app, brief: 'Revise the application', source: 'manual' })
+}
+
+test('publishing an additive migration preserves records, versions definitions, and invalidates affected proposals', async () => {
+  const { human, agent, slug, record, supplier } = await publishedFixture()
+  const proposal = await kernel.stage(agent, { recordId: record.id, action: 'submit', input: {}, idempotencyKey: 'before-migration' })
+  const draft = await revisedDraft(human, slug, app => {
+    app.entities[0].entity.fields.department = { label: 'Department', type: 'string', required: true, editable: true, default: 'General' }
+    app.entities[0].settings.approvalLimitCents = 500000
+  })
+  await assert.rejects(kernel.publishDraft(human, draft.id, draft.version), (e: unknown) => e instanceof KernelError && e.code === 'PREVIEW_REQUIRED')
+  const preview = await kernel.previewMigration(human, draft.id, draft.version)
+  assert.equal(preview.report.canPublish, true)
+  assert.equal(preview.report.recordCount, 2)
+  assert.equal(preview.report.updatedRecordCount, 1)
+  assert.equal(preview.report.invalidatedProposals, 1)
+  assert.ok(preview.report.changes.some(c => c.label === 'Department' && c.after.includes('General')))
+  assert.equal((await db.businessRecord.findUniqueOrThrow({ where: { id: record.id } })).version, 1)
+  const result = await kernel.publishDraft(human, draft.id, draft.version, preview.token)
+  assert.equal(result.version, 2)
+  assert.equal((await kernel.publishDraft(human, draft.id, draft.version, preview.token)).repeated, true)
+  const stored = await db.businessRecord.findUniqueOrThrow({ where: { id: record.id } })
+  assert.deepEqual(stored.data, { ...(record.data as RecordData), department: 'General' })
+  assert.equal(stored.version, 2)
+  assert.deepEqual((await db.businessRecord.findUniqueOrThrow({ where: { id: supplier.id } })).data, supplier.data)
+  const state = await kernel.snapshot(human, slug)
+  assert.equal(state.project?.version, 2)
+  assert.equal(state.capabilities.find(c => c.slug.endsWith('__requests'))?.version, 2)
+  assert.equal(state.capabilities.find(c => c.slug.endsWith('__suppliers'))?.version, 1)
+  await assert.rejects(kernel.review(human, proposal.change!.id, 'apply'), (e: unknown) => e instanceof KernelError && e.code === 'STALE_PROPOSAL')
+  const history = await kernel.projectHistory(human, slug)
+  assert.deepEqual(history.map(v => v.version), [2, 1])
+  assert.equal((history[1].definition as { entities: { entity: { fields: Record<string, unknown> } }[] }).entities[0].entity.fields.department, undefined)
+})
+
+test('updated defaults never overwrite existing values; new entities start empty', async () => {
+  const { human, slug, record } = await publishedFixture()
+  const first = await revisedDraft(human, slug, app => { app.entities[0].entity.fields.department = { label: 'Department', type: 'string', required: true, editable: true, default: 'General' } })
+  const p1 = await kernel.previewMigration(human, first.id, first.version)
+  await kernel.publishDraft(human, first.id, first.version, p1.token)
+  const next = await revisedDraft(human, slug, app => {
+    app.entities[0].entity.fields.department.default = 'Finance'
+    const departments = structuredClone(app.entities[1]); departments.slug = 'departments'; departments.name = 'Departments'; departments.entity.name = 'department'; departments.entity.label = 'Department'
+    app.entities.push(departments)
+    app.navigation.push({ entity: 'departments', label: 'Departments' })
+  })
+  const p2 = await kernel.previewMigration(human, next.id, next.version)
+  assert.equal(p2.report.updatedRecordCount, 0)
+  await kernel.publishDraft(human, next.id, next.version, p2.token)
+  const state = await kernel.snapshot(human, slug)
+  assert.equal(state.capabilities.length, 3)
+  assert.equal(state.records.filter(r => r.capability.endsWith('__departments')).length, 0)
+  assert.equal((state.records.find(r => r.id === record.id)!.data as RecordData).department, 'General')
+})
+
+test('migration blocks removals, type changes, and incompatible required fields without mutating live data', async () => {
+  const { human, slug, record } = await publishedFixture()
+  const variants: ((app: import('../src/kernel/application').Application) => void)[] = [
+    app => { delete app.entities[1].entity.fields.contact },
+    app => { app.entities[1].entity.fields.contact = { label: 'Contact', type: 'boolean', required: false, editable: true, default: false } },
+    app => { app.entities[0].entity.fields.department = { label: 'Department', type: 'string', required: true, editable: true } },
+    app => { app.entities[0].entity.fields.supplier.required = false; delete app.entities[0].entity.fields.supplier.reference; app.entities.pop() },
+  ]
+  const original = await kernel.editProject(human, slug)
+  for (const revise of variants) {
+    const { validateApplication } = await import('../src/kernel/application')
+    const current = await kernel.getDraft(human, original.id)
+    const app = validateApplication(original.definition)
+    // Keep presentation valid so this test reaches the record migration guard.
+    app.layouts = []; app.views = []; app.navigation = []; app.startView = null
+    revise(app)
+    const draft = await kernel.saveDraft(human, { id: current.id, expectedVersion: current.version, definition: app, brief: 'Test incompatible migration', source: 'manual' })
+    const preview = await kernel.previewMigration(human, draft.id, draft.version)
+    assert.equal(preview.report.canPublish, false)
+    assert.ok(preview.report.blockerCount > 0)
+    await assert.rejects(kernel.publishDraft(human, draft.id, draft.version, preview.token), (e: unknown) => e instanceof KernelError && e.code === 'MIGRATION_BLOCKED')
+    assert.deepEqual((await db.businessRecord.findUniqueOrThrow({ where: { id: record.id } })).data, record.data)
+    assert.equal((await kernel.snapshot(human, slug)).project?.version, 1)
+    assert.equal((await kernel.projectHistory(human, slug)).length, 1)
+  }
+})
+
+test('records and proposals changed after preview require a fresh preview', async () => {
+  const { human, agent, slug, record } = await publishedFixture()
+  const draft = await revisedDraft(human, slug, app => { app.entities[0].settings.approvalLimitCents = 500000 })
+  const p1 = await kernel.previewMigration(human, draft.id, draft.version)
+  await kernel.createRecord(human, { title: 'Supplier added after preview' }, `${slug}__suppliers`)
+  await assert.rejects(kernel.publishDraft(human, draft.id, draft.version, p1.token), (e: unknown) => e instanceof KernelError && e.code === 'STALE_PREVIEW')
+  const p2 = await kernel.previewMigration(human, draft.id, draft.version)
+  const staged = await kernel.stage(agent, { recordId: record.id, action: 'submit', input: {}, idempotencyKey: 'after-preview' })
+  await assert.rejects(kernel.publishDraft(human, draft.id, draft.version, p2.token), (e: unknown) => e instanceof KernelError && e.code === 'STALE_PREVIEW')
+  const p3 = await kernel.previewMigration(human, draft.id, draft.version)
+  await kernel.review(human, staged.change!.id, 'apply')
+  await assert.rejects(kernel.publishDraft(human, draft.id, draft.version, p3.token), (e: unknown) => e instanceof KernelError && e.code === 'STALE_PREVIEW')
+  const fresh = await kernel.previewMigration(human, draft.id, draft.version)
+  assert.equal((await kernel.publishDraft(human, draft.id, draft.version, fresh.token)).version, 2)
+})
+
+test('draft edits invalidate preview receipts and competing application changes reject stale bases', async () => {
+  const { human, slug } = await publishedFixture()
+  const first = await revisedDraft(human, slug, app => { app.name = 'Revised name' })
+  const preview = await kernel.previewMigration(human, first.id, first.version)
+  const competitor = await db.projectDraft.create({ data: { workspaceId: human.workspaceId, definition: first.definition!, brief: first.brief, source: 'manual', createdBy: human.userId, projectSlug: slug, baseProjectVersion: 1 } })
+  const competingPreview = await kernel.previewMigration(human, competitor.id, competitor.version)
+  const saved = await kernel.saveDraft(human, { id: first.id, expectedVersion: first.version, definition: first.definition, brief: 'Another draft edit', source: 'manual' })
+  await assert.rejects(kernel.publishDraft(human, saved.id, saved.version, preview.token), (e: unknown) => e instanceof KernelError && e.code === 'PREVIEW_REQUIRED')
+  const current = await kernel.previewMigration(human, saved.id, saved.version)
+  await kernel.publishDraft(human, saved.id, saved.version, current.token)
+  await assert.rejects(kernel.publishDraft(human, competitor.id, competitor.version, competingPreview.token), (e: unknown) => e instanceof KernelError && e.code === 'STALE_PROJECT')
+  await assert.rejects(kernel.previewMigration(human, competitor.id, competitor.version), (e: unknown) => e instanceof KernelError && e.code === 'STALE_PROJECT')
+  assert.equal((await kernel.publishDraft(human, saved.id, saved.version)).repeated, true)
+})
+
+test('migration access is tenant-scoped, owner-only, and publication is human-only', async () => {
+  const { human, agent, slug } = await publishedFixture()
+  const other = await fixture()
+  const draft = await kernel.editProject(human, slug)
+  assert.equal((await kernel.editProject(human, slug)).id, draft.id)
+  await assert.rejects(kernel.editProject(other.human, slug))
+  await assert.rejects(kernel.projectHistory(other.human, slug))
+  await assert.rejects(kernel.previewMigration(other.human, draft.id, draft.version))
+  const preview = await kernel.previewMigration(human, draft.id, draft.version)
+  await assert.rejects(kernel.publishDraft(agent, draft.id, draft.version, preview.token))
+  await assert.rejects(kernel.publishDraft(other.human, draft.id, draft.version, preview.token))
+  await db.membership.update({ where: { userId_workspaceId: { userId: human.userId, workspaceId: human.workspaceId } }, data: { role: 'operator' } })
+  const operator = { ...human, role: 'operator' }
+  await assert.rejects(kernel.editProject(operator, slug))
+  await assert.rejects(kernel.projectHistory(operator, slug))
+  await assert.rejects(kernel.previewMigration(operator, draft.id, draft.version))
+  await assert.rejects(kernel.publishDraft(operator, draft.id, draft.version, preview.token))
+})
+
+const access = new AgentAccess(db)
+async function credentialFixture() {
+  const data = await fixture()
+  const project = data.snapshot.projects.find(p => p.packages.includes('procurement'))!
+  const issued = await access.create(data.human, { project: project.slug, name: 'Test agent', expiresInDays: 30, actions: [{ capability: 'procurement', action: 'approve', version: 1 }] })
+  return { ...data, project, ...issued, machine: await access.authenticate(issued.token) }
+}
+
+test('scoped credentials store only hashes, disclose secrets once, and bind records and operator actions', async () => {
+  const f = await credentialFixture()
+  assert.equal(f.machine.role, 'operator')
+  assert.equal(f.machine.kind, 'agent')
+  const stored = await db.agentCredential.findUniqueOrThrow({ where: { id: f.credential.id } })
+  assert.notEqual(stored.tokenHash, f.token)
+  assert.equal(stored.tokenHash.length, 64)
+  const listed = await access.list(f.human, f.project.slug)
+  assert.ok(!JSON.stringify(listed).includes(f.token))
+  assert.ok(!JSON.stringify(listed).includes(stored.tokenHash))
+  const state = await kernel.agentSnapshot(f.machine)
+  assert.ok(state.records.every(r => f.project.packages.includes(r.capability)))
+  assert.ok(state.capabilities.flatMap(c => c.tools).every(t => t.name === 'procurement.approve'))
+  const tool = state.capabilities.flatMap(c => c.tools)[0]
+  assert.equal(tool.inputSchema.properties.type.const, 'stage')
+  assert.equal(tool.inputSchema.properties.action.const, 'approve')
+  assert.equal(tool.inputSchema.properties.input.type, 'object')
+  assert.deepEqual(tool.inputSchema.required, ['type', 'recordId', 'action', 'input', 'idempotencyKey'])
+  const command = { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'credential-action' }
+  const result = await kernel.stage(f.machine, command)
+  assert.equal(result.change?.agentCredentialId, f.credential.id)
+  assert.equal((await kernel.stage(f.machine, command)).change?.id, result.change?.id)
+  const event = await db.execution.findFirstOrThrow({ where: { changeId: result.change!.id } })
+  assert.equal(event.actorId, f.credential.id)
+  assert.equal(event.actorName, 'Test agent')
+  assert.equal((await kernel.agentProposal(f.machine, result.change!.id)).change.status, 'pending')
+  await kernel.review(f.human, result.change!.id, 'apply')
+  assert.equal((await kernel.agentProposal(f.machine, result.change!.id)).change.status, 'applied')
+})
+
+test('agent scopes reject unrelated records, forbidden actions, human functions and forged identities', async () => {
+  const f = await credentialFixture(), other = await fixture()
+  const unrelated = f.snapshot.records.find(r => !f.project.packages.includes(r.capability))!
+  await assert.rejects(kernel.stage(f.machine, { recordId: unrelated.id, action: 'publish', input: {}, idempotencyKey: 'out-of-project' }), /outside/)
+  await assert.rejects(kernel.stage(f.machine, { recordId: other.record.id, action: 'approve', input: {}, idempotencyKey: 'out-of-tenant' }), /not found/)
+  await assert.rejects(kernel.stage(f.machine, { recordId: f.record.id, action: 'reject', input: {}, idempotencyKey: 'out-of-action' }), /outside/)
+  await assert.rejects(kernel.snapshot(f.machine), /only read/)
+  await assert.rejects(kernel.createRecord(f.machine, {}), /only read/)
+  await assert.rejects(kernel.saveDraft(f.machine, { brief: 'A test', definition: purchasingExample(), source: 'manual' }), /only read/)
+  await assert.rejects(kernel.stage({ ...f.machine, role: 'owner' }, { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'forged-role' }), /identity/)
+  await assert.rejects(access.create(f.machine, { project: f.project.slug, name: 'Nested', expiresInDays: 1, actions: f.credential.actions }), /owner/)
+  assert.equal((await access.list(other.human, f.project.slug)).length, 0)
+  await assert.rejects(access.revoke(other.human, f.credential.id), /not found/)
+})
+
+test('revocation, expiry, owner removal and definition changes prevent use and pending apply', async () => {
+  for (const mutation of ['revoke', 'expire', 'demote', 'definition']) {
+    const f = await credentialFixture()
+    const staged = await kernel.stage(f.machine, { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: `pending-${mutation}` })
+    if (mutation === 'revoke') { await access.revoke(f.human, f.credential.id); await access.revoke(f.human, f.credential.id) }
+    if (mutation === 'expire') await db.agentCredential.update({ where: { id: f.credential.id }, data: { expiresAt: new Date(0) } })
+    if (mutation === 'demote') await db.membership.update({ where: { userId_workspaceId: { userId: f.human.userId, workspaceId: f.human.workspaceId } }, data: { role: 'operator' } })
+    if (mutation === 'definition') await kernel.updatePolicies(f.human, 1, { approvalLimitCents: 1000000, requireVerifiedSupplier: true })
+    await assert.rejects(kernel.stage(f.machine, { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'after-mutation' }))
+    if (mutation !== 'definition') await assert.rejects(access.authenticate(f.token))
+    else assert.equal((await kernel.agentSnapshot(f.machine)).staleActions.length, 1)
+    if (mutation === 'demote') {
+      // Restore owner only after proving the old principal cannot bypass current membership.
+      await assert.rejects(kernel.review(f.human, staged.change!.id, 'apply'))
+    } else {
+      await assert.rejects(kernel.review(f.human, staged.change!.id, 'apply'))
+      await kernel.review(f.human, staged.change!.id, 'reject')
+    }
+    assert.equal((await db.businessRecord.findUniqueOrThrow({ where: { id: f.record.id } })).version, 1)
+  }
+})
+
+test('credentials cannot collide on idempotency keys or read another credential proposal', async () => {
+  const f = await credentialFixture()
+  const second = await access.create(f.human, { project: f.project.slug, name: 'Second agent', expiresInDays: 1, actions: f.credential.actions })
+  const p = await access.authenticate(second.token)
+  const command = { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'same-key-two-agents' }
+  const staged = await kernel.stage(f.machine, command)
+  await assert.rejects(kernel.stage(p, command), /different proposal/)
+  await assert.rejects(kernel.agentProposal(p, staged.change!.id), /not found/)
+  await assert.rejects(kernel.review(f.machine, staged.change!.id, 'apply'), /only read/)
+})
+
+test('credential API authenticates headers, enforces scope, returns proposal status and rejects extra authority', async () => {
+  const f = await credentialFixture()
+  const call = (body?: unknown, token = f.token, query = '') => handleAgentCredential(new Request(`http://localhost/api/agent${query}`, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }), access, kernel)
+  const read = await call()
+  assert.equal(read.status, 200)
+  assert.equal(read.headers.get('cache-control'), 'no-store')
+  assert.equal((await read.json()).project.slug, f.project.slug)
+  assert.equal((await call(undefined, 'bad')).status, 401)
+  assert.equal((await call(undefined, f.token, '?project=another')).status, 400)
+  assert.equal((await call({ type: 'review', decision: 'apply' })).status, 403)
+  assert.equal((await call({ type: 'create_agent_credential' })).status, 403)
+  assert.equal((await call({ type: 'stage', recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'api-agent-stage', role: 'owner' })).status, 400)
+  const staged = await call({ type: 'stage', recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'api-agent-stage' })
+  assert.equal(staged.status, 200)
+  const change = (await staged.json()).change
+  assert.equal((await (await call(undefined, f.token, `?change=${change.id}`)).json()).change.status, 'pending')
+  await access.revoke(f.human, f.credential.id)
+  assert.equal((await call()).status, 401)
+})
+
+test('agent record pagination remains scoped to the application', async () => {
+  const f = await credentialFixture()
+  await db.businessRecord.createMany({ data: Array.from({ length: 105 }, (_, i) => ({ workspaceId: f.human.workspaceId, capability: 'procurement', entity: 'purchase_request', data: { title: `Page ${i}` } })) })
+  const first = await kernel.agentSnapshot(f.machine)
+  assert.equal(first.records.length, 100)
+  assert.ok(first.nextCursor)
+  const second = await kernel.agentSnapshot(f.machine, first.nextCursor)
+  assert.equal(second.nextCursor, null)
+  assert.ok(second.records.length > 0)
+  assert.ok(!second.records.some(r => first.records.some(previous => previous.id === r.id)))
+  assert.ok(second.records.every(r => f.project.packages.includes(r.capability)))
+})
+
+
+test('agent grant creation validates authority, application scope, expiry and reviewed definition', async () => {
+  const f = await credentialFixture()
+  const grant = { project: f.project.slug, name: 'Invalid grant', expiresInDays: 30, actions: [{ capability: 'procurement', action: 'approve', version: 1 }] }
+  await assert.rejects(access.create(f.agent, grant), /owner/)
+  await assert.rejects(access.create(f.human, { ...grant, expiresInDays: 91 }))
+  await assert.rejects(access.create(f.human, { ...grant, actions: [] }))
+  await assert.rejects(access.create(f.human, { ...grant, actions: [{ capability: 'procurement', action: 'approve', version: 2 }] }), /Refresh/)
+  await assert.rejects(access.create(f.human, { ...grant, actions: [{ capability: 'procurement', action: 'invented', version: 1 }] }), /operators/)
+  await assert.rejects(access.create(f.human, { ...grant, actions: [{ capability: 'unrelated', action: 'publish', version: 1 }] }), /this application/)
+  assert.equal((await access.list(f.human, f.project.slug)).length, 1)
+})
+
+test('MCP official client discovers scoped tools, stages idempotently and reads proposal outcomes', async () => {
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+  const { handleMcp } = await import('../src/lib/mcp.server')
+  const f = await credentialFixture()
+  const client = new Client({ name: 'kernel-integration-test', version: '1.0.0' })
+  const transport = new StreamableHTTPClientTransport(new URL('http://localhost:3000/api/mcp'), {
+    requestInit: { headers: { Authorization: `Bearer ${f.token}` } },
+    fetch: async (url, init) => handleMcp(new Request(url, init), access, kernel),
+  })
+  try {
+    await client.connect(transport)
+    assert.equal(client.getServerVersion()?.name, 'kernel')
+    const tools = await client.listTools()
+    assert.equal(tools.tools.length, 3)
+    const tool = tools.tools.find(t => t.name.startsWith('stage_'))!
+    assert.ok(tool.description?.includes('review'))
+    const records = await client.callTool({ name: 'list_records', arguments: {} })
+    assert.equal((records.structuredContent as { project: { slug: string } }).project.slug, f.project.slug)
+    const args = { recordId: f.record.id, input: {}, idempotencyKey: 'mcp-official-client' }
+    const first = await client.callTool({ name: tool.name, arguments: args })
+    assert.equal(first.isError, false)
+    const change = (first.structuredContent as { change: { id: string } }).change
+    const again = await client.callTool({ name: tool.name, arguments: args })
+    assert.equal((again.structuredContent as { change: { id: string } }).change.id, change.id)
+    assert.equal((await db.businessRecord.findUniqueOrThrow({ where: { id: f.record.id } })).version, 1)
+    await kernel.review(f.human, change.id, 'apply')
+    const status = await client.callTool({ name: 'get_proposal', arguments: { changeId: change.id } })
+    assert.equal((status.structuredContent as { change: { status: string } }).change.status, 'applied')
+    const forbidden = await client.callTool({ name: 'apply', arguments: {} })
+    assert.equal(forbidden.isError, true)
+    await access.revoke(f.human, f.credential.id)
+    await assert.rejects(client.listTools())
+  } finally { await client.close() }
+})
+
+test('MCP transport rejects missing credentials, hostile origins, invalid protocol messages and oversized bodies', async () => {
+  const { handleMcp } = await import('../src/lib/mcp.server')
+  const f = await credentialFixture()
+  const headers = { Authorization: `Bearer ${f.token}`, Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json' }
+  const call = (body: string, extra: Record<string, string> = {}, url = 'http://localhost:3000/api/mcp') => handleMcp(new Request(url, { method: 'POST', headers: { ...headers, ...extra }, body }), access, kernel)
+  assert.equal((await call('{}', { Authorization: '' })).status, 401)
+  assert.equal((await call('{}', { Origin: 'https://untrusted.example' })).status, 403)
+  assert.equal((await call('{}', {}, 'http://untrusted.example/api/mcp')).status, 403)
+  assert.equal((await call('{}', {}, 'http://localhost:3000/api/mcp?token=secret')).status, 400)
+  assert.equal((await call('{}', { 'Content-Type': 'text/plain' })).status, 415)
+  assert.equal((await call('{')).status, 400)
+  assert.equal((await call(' '.repeat(128001))).status, 413)
+  const unknown = await call(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'invented' }))
+  assert.equal((await unknown.json()).error.code, -32601)
+  const notification = await call(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }))
+  assert.equal(notification.status, 202)
+  const get = await handleMcp(new Request('http://localhost:3000/api/mcp', { headers }), access, kernel)
+  assert.equal(get.status, 405)
+  assert.equal(get.headers.get('allow'), 'POST')
+})
+
+test('MCP action calls preserve tenant and entity boundaries and reject stale scopes and extra arguments', async () => {
+  const { handleMcp } = await import('../src/lib/mcp.server')
+  const f = await credentialFixture(), other = await fixture()
+  const call = async (method: string, params?: unknown) => {
+    const reply = await handleMcp(new Request('http://localhost:3000/api/mcp', { method: 'POST', headers: { Authorization: `Bearer ${f.token}`, Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) }), access, kernel)
+    return reply.json()
+  }
+  const tools = await call('tools/list')
+  const name = tools.result.tools.find((t: { name: string }) => t.name.startsWith('stage_')).name
+  const command = { recordId: f.record.id, input: {}, idempotencyKey: 'mcp-negative-test' }
+  assert.equal((await call('tools/call', { name, arguments: { ...command, role: 'owner' } })).result.isError, true)
+  assert.equal((await call('tools/call', { name, arguments: { ...command, recordId: other.record.id } })).result.isError, true)
+  const unrelated = f.snapshot.records.find(r => !f.project.packages.includes(r.capability))!
+  assert.equal((await call('tools/call', { name, arguments: { ...command, recordId: unrelated.id } })).result.structuredContent.code, 'AGENT_SCOPE')
+  const expensive = f.snapshot.records.find(r => (r.data as RecordData).title === 'Customer research study')!
+  const blocked = await call('tools/call', { name, arguments: { ...command, recordId: expensive.id } })
+  assert.equal(blocked.result.isError, true)
+  assert.equal(blocked.result.structuredContent.status, 'blocked')
+  await kernel.updatePolicies(f.human, 1, { approvalLimitCents: 1000000, requireVerifiedSupplier: true })
+  assert.equal((await call('tools/list')).result.tools.length, 2)
+  assert.equal((await call('tools/call', { name, arguments: command })).result.isError, true)
+})
+
+test('saved views publish with namespaced navigation and view-only revisions preserve pending actions', async () => {
+  const { human } = await fixture()
+  const app = purchasingExample()
+  const draft = await kernel.saveDraft(human, { brief: 'Purchasing with saved work views', definition: app, source: 'manual' })
+  const { slug } = await kernel.publishDraft(human, draft.id, draft.version)
+  const supplier = await kernel.createRecord(human, { title: 'View test supplier' }, `${slug}__suppliers`)
+  const record = await kernel.createRecord(human, { title: 'View test order', supplier: supplier.id, amountCents: 10000, category: 'Equipment', justification: 'Verify presentation updates preserve data', supplierVerified: true }, `${slug}__requests`)
+  const pending = await kernel.stage(human, { recordId: record.id, action: 'submit', input: {}, idempotencyKey: `view-submit-${slug}` })
+  const before = await kernel.snapshot(human, slug)
+  assert.equal(before.project?.presentation?.startView, 'awaiting_decision')
+  assert.equal(before.project?.presentation?.views[0].entity, `${slug}__requests`)
+  const edit = await kernel.editProject(human, slug)
+  const { validateApplication } = await import('../src/kernel/application')
+  const next = validateApplication(edit.definition)
+  next.layouts = [{ entity: 'requests', sections: [{ id: 'decision', name: 'Review evidence', fields: ['status', 'supplierVerified'] }] }]
+  next.layouts[0].sections[0].when = { field: 'status', operator: 'eq', value: 'approved' }
+  next.views[0].name = 'Purchases to review'
+  next.navigation.reverse()
+  next.startView = 'active_suppliers'
+  const saved = await kernel.saveDraft(human, { id: edit.id, expectedVersion: edit.version, brief: edit.brief, definition: next, source: 'manual' })
+  const preview = await kernel.previewMigration(human, saved.id, saved.version)
+  assert.equal(preview.report.updatedRecordCount, 0)
+  assert.equal(preview.report.invalidatedProposals, 0)
+  assert(preview.report.changes.some(change => change.label.startsWith('View:')))
+  await kernel.publishDraft(human, saved.id, saved.version, preview.token)
+  const after = await kernel.snapshot(human, slug)
+  assert.equal(after.project?.presentation?.navigation[0].entity, `${slug}__suppliers`)
+  assert.equal(after.project?.presentation?.views[0].name, 'Purchases to review')
+  assert.equal(after.project?.presentation?.layouts[0].entity, `${slug}__requests`)
+  assert.equal(after.project?.presentation?.layouts[0].sections[0].name, 'Review evidence')
+  assert.equal(after.project?.presentation?.layouts[0].sections[0].when?.value, 'approved')
+  assert(preview.report.changes.some(change => change.after.includes('when Status equals approved')))
+  assert(preview.report.changes.some(change => change.label.startsWith('Record layout:')))
+  assert.deepEqual(after.capabilities.map(cap => cap.version), before.capabilities.map(cap => cap.version))
+  assert.deepEqual(after.records.map(record => record.data), before.records.map(record => record.data))
+  await kernel.review(human, pending.change!.id, 'apply')
+  assert.equal((await kernel.projectHistory(human, slug)).length, 2)
+  const other = await fixture()
+  await assert.rejects(kernel.snapshot(other.human, slug), /Project not found/)
+})
+
+test('second-process CRM acceptance: publish an empty app, review lifecycle, and update views and sections', async () => {
+  const { crmAcceptanceApplication } = await import('./fixtures/crm-application')
+  const { matchesView } = await import('../src/kernel/application-views')
+  const { recordSections } = await import('../src/kernel/application-layouts')
+  const { human, agent } = await fixture()
+  const app = crmAcceptanceApplication()
+  const draft = await kernel.saveDraft(human, { brief: 'Synthetic CRM acceptance', definition: app, source: 'example' })
+  assert.deepEqual((await kernel.getDraft(human, draft.id)).definition, app)
+  const { slug } = await kernel.publishDraft(human, draft.id, draft.version)
+  assert.equal((await kernel.snapshot(human, slug)).records.length, 0)
+  const capability = `${slug}__crm`
+  const lead = await kernel.createRecord(human, { title: 'QA sample opportunity', company: 'QA Sample Company', contact: 'QA Contact', source: 'Referral' }, capability)
+  const read = async () => (await db.businessRecord.findUniqueOrThrow({ where: { id: lead.id } })).data as RecordData
+  assert.equal((await kernel.stage(agent, { recordId: lead.id, action: 'convert', input: {}, idempotencyKey: 'crm-too-early' })).status, 'blocked')
+  assert.deepEqual(recordSections(app.entities[0], app.layouts[0], await read()).map(s => s.id), ['contact'])
+  const opened = await kernel.stage(agent, { recordId: lead.id, action: 'open', input: {}, idempotencyKey: 'crm-open' })
+  assert.equal((await read()).status, 'draft')
+  await assert.rejects(kernel.review(agent, opened.change!.id, 'apply'), /human/i)
+  await kernel.review(human, opened.change!.id, 'apply')
+  assert.equal(matchesView(await read(), app.views[0]), true)
+  assert.deepEqual(recordSections(app.entities[0], app.layouts[0], await read()).map(s => s.id), ['contact', 'progress'])
+  const converted = await kernel.stage(agent, { recordId: lead.id, action: 'convert', input: {}, idempotencyKey: 'crm-convert' })
+  assert.equal(matchesView(await read(), app.views[0]), true)
+  await kernel.review(human, converted.change!.id, 'apply')
+  assert.equal(matchesView(await read(), app.views[0]), false)
+  assert.equal(matchesView(await read(), app.views[1]), true)
+  assert.equal((await kernel.review(human, converted.change!.id, 'apply')).repeated, true)
+  const state = await kernel.snapshot(human, slug)
+  assert.equal(state.records.length, 1)
+  assert.equal(state.records[0].version, 3)
+  assert.equal(state.changes.filter(c => c.status === 'applied').length, 2)
+  assert.equal(state.executions.filter(e => e.outcome === 'applied' && e.changeId && e.recordId === lead.id).length, 2)
+})
+
+
+test('plans persist decisions, require confirmation and reject late build results and stale publication', async () => {
+  const { human, agent } = await fixture()
+  const content = { request: 'Track purchasing for our team.', messages: [{ role: 'user', text: 'Track purchasing for our team.' }], answers: {}, proposal: { plan: { name: 'Purchasing', summary: 'Purchase review', records: 'Requests and suppliers', workflow: 'Draft to submitted to approved', rules: 'Owners review all changes', limitations: 'No integrations' }, questions: [] } }
+  const first = await kernel.savePlan(human, { content })
+  assert.equal((await kernel.listPlans(human))[0].content.request, content.request)
+  await assert.rejects(kernel.planState(agent, first.id, first.version, 'confirmed'))
+  await assert.rejects(kernel.planState(human, first.id, first.version, 'building'))
+  const confirmed = await kernel.planState(human, first.id, first.version, 'confirmed')
+  const building = await kernel.planState(human, first.id, confirmed.version, 'building')
+  const edited = await kernel.savePlan(human, { id: first.id, expectedVersion: building.version, content: { ...content, request: 'Revised purchase workflow for our team.' } })
+  await assert.rejects(kernel.finishPlan(human, first.id, building.version, purchasingExample()))
+  await assert.rejects(kernel.planState(human, first.id, edited.version, 'confirmed'), /Update the plan/)
+  const refreshed = await kernel.planState(human, first.id, edited.version, 'planning', { ...content, needsProposal: false })
+  const again = await kernel.planState(human, first.id, refreshed.version, 'confirmed')
+  const claim = await kernel.planState(human, first.id, again.version, 'building')
+  const draft = await kernel.finishPlan(human, first.id, claim.version, purchasingExample())
+  const generated = (await kernel.listPlans(human))[0]
+  assert.equal(generated.status, 'generated')
+  await kernel.savePlan(human, { id: first.id, expectedVersion: generated.version, content })
+  await assert.rejects(kernel.publishDraft(human, draft.id, draft.version), /current confirmed plan/)
+  const other = await fixture()
+  await assert.rejects(kernel.planState(other.human, first.id, generated.version + 1))
+})
+
+test('unanswered plan questions prevent confirmation', async () => {
+  const { human } = await fixture()
+  const plan = await kernel.savePlan(human, { content: { request: 'Plan a purchase workflow.', messages: [], answers: {}, proposal: null } })
+  await assert.rejects(kernel.planState(human, plan.id, plan.version, 'confirmed'), /open questions/)
+})
+
+
+test('saving a follow-up keeps confirmation blocked across reload and client attempts to clear pending state', async () => {
+  const { human } = await fixture()
+  const content = { request: 'Create a simple lead tracker.', messages: [], answers: {}, proposal: { plan: { name: 'Leads', summary: 'Track leads', records: 'Title', workflow: 'Draft to open', rules: 'Owner review', limitations: '' }, questions: [] } }
+  const plan = await kernel.savePlan(human, { content })
+  const pending = await kernel.savePlan(human, { id: plan.id, expectedVersion: plan.version, content: { ...content, messages: [{ role: 'user', text: 'Add required company' }] } })
+  const reloaded = (await kernel.listPlans(human))[0]
+  assert.equal(reloaded.content.needsProposal, true)
+  await assert.rejects(kernel.planState(human, plan.id, pending.version, 'confirmed'), /Update the plan/)
+  const attempted = await kernel.savePlan(human, { id: plan.id, expectedVersion: pending.version, content: { ...reloaded.content, needsProposal: false } })
+  await assert.rejects(kernel.planState(human, plan.id, attempted.version, 'confirmed'), /Update the plan/)
+})
+
+test('workspace inbox includes old pending approvals, isolates tenants and excludes reviewed work', async () => {
+  const a = await fixture(), b = await fixture()
+  const staged = await kernel.stage(a.agent, { recordId: a.record.id, action: 'approve', input: {}, idempotencyKey: 'inbox-pending' })
+  const row = await db.changeSet.findUniqueOrThrow({ where: { id: staged.change!.id } })
+  await db.changeSet.createMany({ data: Array.from({ length: 101 }, (_, index) => ({ ...row, input: {}, before: {}, after: {}, checks: [], id: `inbox-history-${a.human.userId}-${index}`, idempotencyKey: `history-${index}`, status: 'rejected', createdAt: new Date(Date.now() + index) })) })
+  const pending = await kernel.inbox(a.human)
+  assert.equal(pending.length, 1)
+  assert.equal(pending[0].id, row.id)
+  assert.equal(pending[0].projectSlug, 'procurement')
+  assert.equal(pending[0].stale, false)
+  assert.ok((await kernel.snapshot(a.human, 'procurement')).changes.some(change => change.id === row.id && change.status === 'pending'))
+  assert.deepEqual(await kernel.inbox(b.human), [])
+  await assert.rejects(kernel.inbox({ ...a.human, workspaceId: b.human.workspaceId }), /access/)
+  await db.businessRecord.update({ where: { id: a.record.id }, data: { version: { increment: 1 } } })
+  assert.equal((await kernel.inbox(a.human))[0].stale, true)
+  await kernel.review(a.human, row.id, 'reject')
+  assert.deepEqual(await kernel.inbox(a.human), [])
+})
+
+test('activity pagination is stable across timestamp ties and rejects another workspace cursor', async () => {
+  const a = await fixture(), b = await fixture()
+  const stamp = new Date('2030-01-01T00:00:00Z')
+  await db.execution.createMany({ data: Array.from({ length: 55 }, (_, index) => ({ id: `activity-${a.human.userId}-${String(index).padStart(3, '0')}`, workspaceId: a.human.workspaceId, actorId: a.human.userId, actorName: 'Test', actorKind: 'human', action: 'procurement.approve', outcome: 'staged', recordId: a.record.id, details: { privateValue: 'not in public summary' }, createdAt: stamp })) })
+  const first = await kernel.activity(a.human)
+  assert.equal(first.items.length, 50)
+  assert.ok(first.nextCursor)
+  assert.equal(first.items[0].projectSlug, 'procurement')
+  assert.equal(first.items[0].recordTitle, (a.record.data as RecordData).title)
+  assert.ok(!JSON.stringify(first).includes('privateValue'))
+  const second = await kernel.activity(a.human, first.nextCursor!)
+  assert.ok(second.items.length >= 5)
+  assert.ok(second.items.every(item => !first.items.some(previous => previous.id === item.id)))
+  await assert.rejects(kernel.activity(b.human, first.nextCursor!), /not found/)
+  await assert.rejects(kernel.activity({ ...a.human, workspaceId: b.human.workspaceId }), /access/)
+})
+
+test('workspace agent directory is owner-only, redacts credentials and reports lifecycle states', async () => {
+  const a = await fixture(), b = await fixture(), access = new AgentAccess(db)
+  const cap = a.snapshot.capabilities.find(item => item.slug === 'procurement')!
+  const grant = await access.create(a.human, { project: 'procurement', name: 'Directory test', expiresInDays: 1, actions: [{ capability: cap.slug, action: 'approve', version: cap.version }] })
+  const listed = await access.listWorkspace(a.human)
+  assert.equal(listed[0].state, 'Active')
+  assert.ok(!JSON.stringify(listed).includes(grant.token))
+  assert.ok(!JSON.stringify(listed).includes('tokenHash'))
+  assert.deepEqual(await access.listWorkspace(b.human), [])
+  await assert.rejects(access.listWorkspace({ ...a.human, role: 'operator' }), /owner/)
+  await assert.rejects(access.listWorkspace(a.agent), /owner/)
+  await db.capability.update({ where: { workspaceId_slug: { workspaceId: a.human.workspaceId, slug: cap.slug } }, data: { version: { increment: 1 } } })
+  assert.equal((await access.listWorkspace(a.human))[0].state, 'Needs review')
+  await db.agentCredential.update({ where: { id: grant.credential.id }, data: { expiresAt: new Date(0) } })
+  assert.equal((await access.listWorkspace(a.human))[0].state, 'Expired')
+  await access.revoke(a.human, grant.credential.id)
+  assert.equal((await access.listWorkspace(a.human))[0].state, 'Revoked')
+})
+
+test('workspace settings and rename require owner access, protect concurrent edits and record history', async () => {
+  const a = await fixture(), b = await fixture()
+  const settings = await kernel.workspaceSettings(a.human)
+  assert.equal(settings.members.length, 1)
+  assert.equal(settings.members[0].user.id, a.human.userId)
+  await assert.rejects(kernel.workspaceSettings({ ...a.human, workspaceId: b.human.workspaceId }), /access/)
+  await assert.rejects(kernel.workspaceSettings(a.agent), /owner/)
+  await assert.rejects(kernel.renameWorkspace(a.agent, 'Changed', settings.workspace.name), /owner/)
+  await assert.rejects(kernel.renameWorkspace(a.human, ' ', settings.workspace.name), /name/)
+  assert.deepEqual(await kernel.renameWorkspace(a.human, '  Updated workspace  ', settings.workspace.name), { name: 'Updated workspace' })
+  await assert.rejects(kernel.renameWorkspace(a.human, 'Stale update', settings.workspace.name), /changed/)
+  assert.equal((await kernel.workspaceSettings(a.human)).workspace.name, 'Updated workspace')
+  assert.equal((await kernel.workspaceSettings(b.human)).workspace.name, b.snapshot.workspace.name)
+  assert.ok((await kernel.activity(a.human)).items.some(item => item.action === 'workspace.rename'))
+})
+
+test('users create and select isolated workspaces with workspace-specific membership roles', async () => {
+  const a = await fixture(), b = await fixture()
+  const created = await kernel.createWorkspace(a.human, '  Second workspace  ')
+  assert.equal(created.name, 'Second workspace')
+  const membership = await kernel.workspaceMembership({ id: a.human.userId, name: a.human.name }, created.id)
+  assert.equal(membership.role, 'owner')
+  const second = { ...a.human, workspaceId: created.id }
+  assert.equal((await kernel.listWorkspaces(a.human)).length, 2)
+  const state = await kernel.snapshot(second)
+  assert.equal(state.projects.length, 0)
+  assert.equal(state.records.length, 0)
+  assert.deepEqual(await kernel.listDrafts(second), [])
+  await assert.rejects(kernel.stage(second, { recordId: a.record.id, action: 'approve', input: {}, idempotencyKey: 'cross-workspace-stage' }), /not found/)
+  await assert.rejects(kernel.workspaceMembership({ id: b.human.userId, name: b.human.name }, created.id), /access/)
+  await assert.rejects(kernel.createWorkspace(a.agent, 'Agent workspace'), /people/)
+  await db.membership.update({ where: { userId_workspaceId: { userId: a.human.userId, workspaceId: created.id } }, data: { role: 'operator' } })
+  assert.equal((await kernel.workspaceMembership({ id: a.human.userId, name: a.human.name }, created.id)).role, 'operator')
+  assert.equal((await kernel.workspaceMembership({ id: a.human.userId, name: a.human.name }, a.human.workspaceId)).role, 'owner')
+  await db.membership.delete({ where: { userId_workspaceId: { userId: a.human.userId, workspaceId: created.id } } })
+  await assert.rejects(kernel.workspaceMembership({ id: a.human.userId, name: a.human.name }, created.id), /access/)
+  assert.equal((await kernel.ensureWorkspace({ id: a.human.userId, name: a.human.name })).workspaceId, a.human.workspaceId)
+})
+
+test('workspace invitations bind recipient, expire, revoke, and preserve isolated roles', async () => {
+  const a = await fixture(), b = await fixture(), c = await fixture()
+  const bEmail = `${b.human.userId}@example.test`
+  const invite = await kernel.inviteMember(a.human, bEmail.toUpperCase(), 'operator')
+  assert.ok(invite.token.length > 60)
+  assert.equal((await kernel.workspaceSettings(a.human)).invitations.length, 1)
+  await assert.rejects(kernel.acceptInvitation(c.human, invite.token))
+  await assert.rejects(kernel.acceptInvitation(b.agent, invite.token))
+  const joined = await kernel.acceptInvitation(b.human, invite.token)
+  assert.equal(joined.workspaceId, a.human.workspaceId)
+  const membership = await kernel.workspaceMembership({id:b.human.userId,name:'Test'}, joined.workspaceId)
+  assert.equal(membership.role, 'operator')
+  assert.equal((await kernel.workspaceMembership({id:b.human.userId,name:'Test'}, b.human.workspaceId)).role, 'owner')
+  await assert.rejects(kernel.acceptInvitation(b.human, invite.token))
+  const operator = {...b.human, workspaceId:a.human.workspaceId,role:'operator'}
+  await assert.rejects(kernel.inviteMember(operator, `${c.human.userId}@example.test`, 'owner'))
+  await assert.rejects(kernel.updateMember(operator, a.human.userId, 'owner', 'remove'))
+  await assert.rejects(kernel.updateMember(a.human, a.human.userId, 'owner', 'remove'))
+  await assert.rejects(kernel.updateMember(c.human, b.human.userId, 'operator', 'owner'))
+  await kernel.updateMember(a.human, b.human.userId, 'operator', 'owner')
+  await assert.rejects(kernel.updateMember(a.human, b.human.userId, 'operator', 'remove'))
+  await kernel.updateMember(a.human, b.human.userId, 'owner', 'remove')
+  await assert.rejects(kernel.workspaceMembership({id:b.human.userId,name:'Test'}, a.human.workspaceId))
+  const revoked = await kernel.inviteMember(a.human, bEmail, 'operator')
+  const pending = (await kernel.workspaceSettings(a.human)).invitations[0]
+  await assert.rejects(kernel.revokeInvitation(c.human, pending.id))
+  await kernel.revokeInvitation(a.human, pending.id)
+  await assert.rejects(kernel.acceptInvitation(b.human, revoked.token))
+  const expired = await kernel.inviteMember(a.human, bEmail, 'operator')
+  await db.workspaceInvitation.updateMany({where:{workspaceId:a.human.workspaceId},data:{expiresAt:new Date(0)}})
+  await assert.rejects(kernel.acceptInvitation(b.human, expired.token))
+  const old = await kernel.inviteMember(a.human, bEmail, 'operator')
+  const replacement = await kernel.inviteMember(a.human, bEmail, 'owner')
+  await assert.rejects(kernel.acceptInvitation(b.human, old.token))
+  await kernel.acceptInvitation(b.human, replacement.token)
+  assert.equal((await kernel.workspaceMembership({id:b.human.userId,name:'Test'}, a.human.workspaceId)).role, 'owner')
+})
+
+test('demoting an inviter invalidates their pending invitations', async () => {
+  const a = await fixture(), b = await fixture(), c = await fixture()
+  await db.membership.create({data:{workspaceId:a.human.workspaceId,userId:b.human.userId,role:'owner'}})
+  const ownerB = {...b.human,workspaceId:a.human.workspaceId}
+  const invite = await kernel.inviteMember(ownerB, `${c.human.userId}@example.test`, 'owner')
+  assert.equal((await kernel.previewInvitation(c.human, invite.token)).role, 'owner')
+  await kernel.updateMember(a.human, b.human.userId, 'owner', 'operator')
+  await assert.rejects(kernel.previewInvitation(c.human, invite.token))
+  await assert.rejects(kernel.acceptInvitation(c.human, invite.token))
 })

@@ -1,3 +1,5 @@
+import { validateApplication } from './application'
+import { applicationPresentation, type ApplicationPresentation } from './application-views'
 export type ShellKind = 'workbench' | 'site'
 
 export type ProjectTemplate = {
@@ -9,6 +11,9 @@ export type ProjectTemplate = {
 }
 
 export type ProjectSnapshot = {
+  presentation?: ApplicationPresentation
+  version: number
+  editable: boolean
   slug: string
   name: string
   description: string
@@ -106,14 +111,20 @@ export function asStringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string')
 }
 
-export function toProjectSnapshot(row: { slug: string; name: string; shell: string; packages: unknown }): ProjectSnapshot {
+export function toProjectSnapshot(row: { slug: string; name: string; shell: string; packages: unknown; description?: string; version?: number; definition?: unknown }): ProjectSnapshot {
   const template = projectTemplate(row.slug)
   return {
+    version: row.version ?? 1,
+    editable: Boolean(row.definition),
     slug: row.slug,
     name: row.name,
-    description: template?.description ?? '',
+    description: row.description || template?.description || '',
     shell: row.shell === 'site' ? 'site' : 'workbench',
     packages: asStringList(row.packages),
+    ...(row.definition ? { presentation: (() => {
+      const presentation = applicationPresentation(validateApplication(row.definition))
+      return { ...presentation, layouts: presentation.layouts.map(layout => ({ ...layout, entity: `${row.slug}__${layout.entity}` })), views: presentation.views.map(view => ({ ...view, entity: `${row.slug}__${view.entity}` })), navigation: presentation.navigation.map(item => ({ ...item, entity: `${row.slug}__${item.entity}` })) }
+    })() } : {}),
   }
 }
 

@@ -1,12 +1,14 @@
+import { workspaceHeaders } from './workspace-selection'
 import type { Check, Definition, Principal, RecordData } from '@/kernel/definition'
 import type { Package, PublicBlock } from '@/kernel/packages'
 import type { ProjectSnapshot } from '@/kernel/projects'
 
 export type BusinessRecord = { id: string; capability: string; entity: string; data: RecordData; version: number; createdAt: string; updatedAt: string }
 export type CapabilitySnapshot = { slug: string; version: number; definition: Definition }
-export type Proposal = { id: string; capability: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string }
+export type Proposal = { id: string; capability: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string; proposerName?: string; input?: RecordData }
 export type { ProjectSnapshot }
 export type Snapshot = {
+  model?: { configured: boolean }
   workspace: { id: string; name: string }
   principal: Principal
   project?: ProjectSnapshot
@@ -27,7 +29,7 @@ export type PublicSitePayload = {
 export type ActionResult = { status?: string; checks?: Check[]; change?: Proposal | null }
 
 export async function request<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, { credentials: 'same-origin', ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) })
+  const response = await fetch(path, { credentials: 'same-origin', headers: { ...workspaceHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}) })
   const result = await response.json()
   if (!response.ok) throw new Error(result.error || 'The request could not complete.')
   return result

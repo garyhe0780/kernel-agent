@@ -12,13 +12,17 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "setup": "node --import tsx scripts/setup.ts && prisma generate && prisma migrate deploy",
-    "check": "pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "accept:model": "node --import tsx scripts/accept-model.ts",
+    "test:browser-recovery": "vite --config tests/browser-recovery/vite.config.ts --host 127.0.0.1 --port 3010 --strictPort",
+    "worker": "node --import tsx scripts/build-worker.ts"
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@prisma/client": "6.19.0",
     "@tanstack/react-router": "latest",
     "@tanstack/react-start": "latest",

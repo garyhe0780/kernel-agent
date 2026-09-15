@@ -9,6 +9,7 @@ export const fieldSchema = z.object({
   options: z.array(z.string()).optional(),
   min: z.number().optional(),
   max: z.number().optional(),
+  reference: z.string().optional(),
 }).strict()
 
 const predicateSchema = z.object({
@@ -38,7 +39,7 @@ export type Definition = z.infer<typeof definitionSchema>
 export type Field = z.infer<typeof fieldSchema>
 export type RecordData = Record<string, string | number | boolean>
 export type Check = { id: string; label: string; passed: boolean; message: string }
-export type Principal = { userId: string; name: string; workspaceId: string; role: string; kind: 'human' | 'agent' }
+export type Principal = { userId: string; name: string; workspaceId: string; role: string; kind: 'human' | 'agent'; agentCredentialId?: string }
 
 export const procurement = definitionSchema.parse({
   slug: 'procurement', name: 'Procurement',

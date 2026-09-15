@@ -1,0 +1,14 @@
+{
+  "mode": "live",
+  "model": "MiniMax-M3",
+  "reasoningEffort": "medium",
+  "startedAt": "2026-09-12T12:53:51.906Z",
+  "checks": [
+    "Live clarification yields bounded questions and accepts explicit answers",
+    "Live generation validates, persists, and publishes without preview records",
+    "Live operational choice stages correctly and requires owner review",
+    "Live additive revision preserves definitions and stored business values"
+  ],
+  "status": "passed",
+  "failure": null
+}

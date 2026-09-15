@@ -61,7 +61,7 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
     <>
       <Toaster position="top-right" />
       <ProjectFrame snapshot={snapshot}>
-        <div className="main">
+        <main className="main" id="main-content" tabIndex={-1}>
           <header className="main-header">
             <div>
               <h1>Purchase requests</h1>
@@ -69,7 +69,7 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
             </div>
             <Button onPress={() => setCreateOpen(true)}><Plus data-icon="inline-start" />New request</Button>
           </header>
-          <div className="main-body">
+          <div className="main-body desk-legacy-body">
             {error ? <Alert variant="danger">{error}</Alert> : null}
             <div className="toolbar">
               <Field value={query} onChange={setQuery}>
@@ -90,7 +90,7 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
                 ]}
               />
             </div>
-            <div className="workbench">
+            <div className="workbench desk-workbench">
               <Card>
                 <CardHeader>
                   <CardTitle>Queue</CardTitle>
@@ -98,7 +98,7 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
                 </CardHeader>
                 <CardContent>
                   {records.length === 0 ? <Empty title="No requests match these filters." /> : (
-                    <table className="data-table">
+                    <div className="table-scroll" role="region" aria-label="Record queue" tabIndex={0}><table className="data-table">
                       <thead>
                         <tr>
                           <th>Request</th>
@@ -109,9 +109,9 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
                       </thead>
                       <tbody>
                         {records.map(record => (
-                          <tr key={record.id} aria-selected={record.id === selectedId} tabIndex={0} onClick={() => setSelectedId(record.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(record.id) } }}>
+                          <tr key={record.id} data-selected={record.id === selectedId} onClick={() => setSelectedId(record.id)}>
                             <td>
-                              <strong>{String(record.data.title)}</strong>
+                              <Button variant="link" className="record-select" aria-pressed={record.id === selectedId} onPress={() => setSelectedId(record.id)}>{String(record.data.title)}</Button>
                               <div className="muted">{record.data.category ? String(record.data.category) : ''}{pendingFor(snapshot, record.id) ? ' · pending' : ''}</div>
                             </td>
                             <td>{String(record.data.supplier)}</td>
@@ -120,11 +120,11 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table></div>
                   )}
                 </CardContent>
               </Card>
-              <aside className="inspector">
+              <aside className="inspector desk-inspector">
                 {selected ? (
                   <Card>
                     <CardHeader>
@@ -136,7 +136,9 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
                       {pending ? (
                         <PendingApply
                           record={selected}
-                          action={pending.action}
+                          proposal={pending}
+                          definition={definition}
+                          records={snapshot.records}
                           busy={busy}
                           canReview={canReview}
                           onReject={() => run('Proposal rejected.', async () => {
@@ -164,7 +166,7 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
               </aside>
             </div>
           </div>
-        </div>
+        </main>
       </ProjectFrame>
       <CreateRequestDialog open={createOpen} busy={busy} onOpenChange={setCreateOpen} onCreate={data => run('Request created.', async () => {
         await request('/api/kernel', { type: 'create', capability: 'procurement', data })
@@ -172,6 +174,7 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
         await refresh()
       })} />
       <ActionDialog
+        error={error}
         open={Boolean(actionName && selected)}
         actionName={actionName}
         record={selected}

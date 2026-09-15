@@ -52,7 +52,7 @@ export function SiteApp({ projectSlug }: { projectSlug: string }) {
     <>
       <Toaster position="top-right" />
       <ProjectFrame snapshot={snapshot} liveHref={`/s/${snapshot.workspace.id}`}>
-        <div className="main">
+        <main className="main" id="main-content" tabIndex={-1}>
           <header className="main-header">
             <div>
               <h1>Journal</h1>
@@ -122,7 +122,7 @@ export function SiteApp({ projectSlug }: { projectSlug: string }) {
               ) : null}
             </div>
           </div>
-        </div>
+        </main>
       </ProjectFrame>
       {createDefinition && createSlug ? (
         <CreateEntityDialog
@@ -138,6 +138,7 @@ export function SiteApp({ projectSlug }: { projectSlug: string }) {
         />
       ) : null}
       <ActionDialog
+        error={error}
         open={Boolean(actionName && selected && selectedCap)}
         actionName={actionName}
         record={selected}

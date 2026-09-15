@@ -1,3 +1,4 @@
+import { pendingInvitation } from '@/lib/pending-invitation'
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 import { AuthScreen } from '@/components/auth-screen'
 import { Skeleton } from '@/components/ui/surfaces'
@@ -33,6 +34,6 @@ function LoginPage() {
     )
   }
 
-  if (session.data) return <Navigate to="/" />
+  if (session.data) return <Navigate to={pendingInvitation() ? "/settings" : "/"} />
   return <AuthScreen mode={mode} />
 }

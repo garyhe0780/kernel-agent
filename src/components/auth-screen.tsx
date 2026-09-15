@@ -1,3 +1,4 @@
+import { pendingInvitation } from '@/lib/pending-invitation'
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Boxes, GitPullRequest, ShieldCheck, Workflow } from 'lucide-react'
@@ -52,7 +53,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             </div>
           </div>
         </div>
-        <p className="auth-footnote">Local development edition · Site, Procurement, operations, and Audit projects</p>
+        <p className="auth-footnote">Local development edition · Build and run business applications</p>
       </section>
       <section className="auth-form-area">
         <div className="auth-form-wrap">
@@ -62,7 +63,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           <h2>{signup ? 'Create your workspace' : 'Welcome back'}</h2>
           <p className="muted">
             {signup
-              ? 'Start with a private workspace. Site, Procurement, operations, and Audit projects are installed with example records.'
+              ? 'Start with a private workspace. Describe a business application, review its preview, and publish it when it fits.'
               : 'Sign in to continue working with your team and agents.'}
           </p>
           <Form
@@ -80,7 +81,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
                   ? await authClient.signUp.email({ ...credentials, name: String(values.get('name')) })
                   : await authClient.signIn.email(credentials)
                 if (result.error) throw new Error(result.error.message || 'Unable to sign in.')
-                await navigate({ to: '/' })
+                await navigate({ to: pendingInvitation() ? '/settings' : '/' })
               } catch (caught) {
                 setError(caught instanceof Error ? caught.message : 'Unable to sign in.')
               } finally {
@@ -118,7 +119,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
               {signup ? 'Sign in' : 'Create an account'}
             </Button>
           </div>
-          <p className="auth-note">Data stays in your local database. The included agent simulator works without an API key.</p>
+          <p className="auth-note">Records stay in your local database. Connected agents send the description or selected project context to your configured model.</p>
         </div>
       </section>
     </main>

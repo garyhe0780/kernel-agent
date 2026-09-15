@@ -67,6 +67,8 @@ model Workspace {
   createdAt    DateTime     @default(now())
   memberships  Membership[]
   projects     Project[]
+  drafts       ProjectDraft[]
+  plans        BuilderPlan[]
   capabilities Capability[]
   records      BusinessRecord[]
   changes      ChangeSet[]
@@ -79,20 +81,56 @@ model Project {
   slug        String
   name        String
   shell       String
+  description String    @default("")
+  version     Int       @default(1)
+  definition  Json?
   packages    Json
+  versions    ProjectVersion[]
   createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   @@unique([workspaceId, slug])
   @@index([workspaceId])
 }
 
+model ProjectDraft {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  brief         String
+  definition    Json
+  version       Int       @default(1)
+  status        String    @default("draft")
+  source        String
+  projectSlug   String?
+  baseProjectVersion Int?
+  preview       Json?
+  publishedVersion Int?
+  createdBy     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, status])
+}
+
+model ProjectVersion {
+  id          String   @id @default(cuid())
+  projectId   String
+  version     Int
+  definition  Json
+  migration   Json
+  publishedBy String
+  createdAt   DateTime @default(now())
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, version])
+}
+
 model Membership {
   id          String    @id @default(cuid())
-  userId      String    @unique
+  userId      String
   workspaceId String
   role        String    @default("owner")
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([userId, workspaceId])
   @@index([workspaceId])
 }
 
@@ -148,6 +186,7 @@ model ChangeSet {
   proposedBy        String
   actorKind         String
   idempotencyKey    String
+  agentCredentialId String?
   reviewedBy        String?
   reviewedAt        DateTime?
   createdAt         DateTime  @default(now())
@@ -170,4 +209,67 @@ model Execution {
   createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   @@index([workspaceId, createdAt])
+}
+
+model AgentCredential {
+  id          String   @id @default(cuid())
+  workspaceId String
+  projectSlug String
+  name        String
+  tokenHash   String   @unique
+  prefix      String
+  createdBy   String
+  actions     Json
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  @@index([workspaceId, projectSlug])
+}
+
+model BuilderPlan {
+  id String @id @default(cuid())
+  workspaceId String
+  draftId String? @unique
+  draftVersion Int?
+  content Json
+  version Int @default(1)
+  status String @default("planning")
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId])
+}
+
+model WorkspaceInvitation {
+  createdBy   String @default("")
+  id          String @id @default(cuid())
+  workspaceId String
+  email       String
+  role        String
+  tokenHash   String @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  @@index([workspaceId])
+}
+
+model BuildJob {
+  id          String @id @default(cuid())
+  workspaceId String
+  planId      String
+  planVersion Int
+  createdBy   String
+  status      String @default("queued")
+  input       Json
+  checkpoints Json
+  events      Json
+  task        String @default("structure")
+  error       Json?
+  leaseToken  String?
+  leaseUntil  DateTime?
+  draftId     String?
+  revision    Int @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([planId, planVersion])
+  @@index([workspaceId, planId])
+  @@index([status, leaseUntil])
 }
