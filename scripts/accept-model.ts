@@ -1,14 +1,15 @@
 import 'dotenv/config'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { PrismaClient } from '@prisma/client'
 import { Kernel } from '../src/kernel/engine.server'
-import { buildApplication, clarifyApplication, modelStatus, planOperation } from '../src/kernel/model.server'
-import { validateApplication } from '../src/kernel/application'
+import { buildAssembly, clarifyApplication, modelStatus, planOperation } from '../src/kernel/model.server'
+import { compileAssembly } from '../src/kernel/application'
+import { validateAssembly } from '../src/kernel/assembly'
 import { clarificationSchema, clarifiedBrief } from '../src/kernel/builder-clarification'
 import type { Principal, RecordData } from '../src/kernel/definition'
+import { openTestDatabase } from '../tests/test-database'
 
 function trace(kind: 'clarification' | 'application'): typeof fetch {
   return async (url, init) => {
@@ -20,7 +21,7 @@ function trace(kind: 'clarification' | 'application'): typeof fetch {
         const trimmed = String(text ?? '').trim()
         const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/i.exec(trimmed)
         const value = JSON.parse(fenced ? fenced[1] : trimmed)
-        if (kind === 'application') validateApplication(value); else clarificationSchema.parse(value)
+        if (kind === 'application') validateAssembly(value); else clarificationSchema.parse(value)
       } catch (error) {
         console.log(`Validation diagnostic (${kind}): ${error instanceof Error ? error.message.slice(0, 1500) : 'invalid'}`)
       }
@@ -32,17 +33,13 @@ function trace(kind: 'clarification' | 'application'): typeof fetch {
 // Explicit opt-in: this script makes billable calls with synthetic data only.
 // DATABASE_URL is intentionally ignored; no real workspace is read or modified.
 const report = { mode: 'live', model: modelStatus().model, reasoningEffort: process.env.KERNEL_REASONING_EFFORT?.trim() || 'provider-default', startedAt: new Date().toISOString(), checks: [] as string[], status: 'running', failure: null as string | null }
-let folder: string | undefined, db: PrismaClient | undefined
+let db: Awaited<ReturnType<typeof openTestDatabase>>['db'] | undefined, close: (() => Promise<void>) | undefined
 const check = (name: string) => { report.checks.push(name); console.log(`PASS ${name}`) }
 try {
   assert(modelStatus().configured, 'Configure the provider key and KERNEL_MODEL before running live acceptance.')
-  folder = await mkdtemp(join(tmpdir(), 'kernel-live-acceptance-'))
-  db = new PrismaClient({ datasourceUrl: `file:${join(folder, 'test.db')}` })
-  const root = new URL('../prisma/migrations/', import.meta.url)
-  for (const entry of (await readdir(root, { withFileTypes: true })).filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
-    const sql = await readFile(new URL(`${entry.name}/migration.sql`, root), 'utf8')
-    for (const statement of sql.split(';').filter(s => s.trim())) await db.$executeRawUnsafe(statement)
-  }
+  const testDb = await openTestDatabase()
+  db = testDb.db
+  close = testDb.close
   const kernel = new Kernel(db)
   await db.user.create({ data: { id: 'live-qa', name: 'Synthetic QA', email: 'live-qa@example.test' } })
   const member = await kernel.ensureWorkspace({ id: 'live-qa', name: 'Synthetic QA' })
@@ -57,48 +54,47 @@ try {
   assert(answered.includes('Answer:'))
   check('Live clarification yields bounded questions and accepts explicit answers')
 
-  const brief = 'Create QA Sales, a synthetic CRM with exactly one entity slug crm. Use fields title (lead name), company and contact as required strings; source as required enum Inbound/Referral; status as noneditable enum draft/open/converted/lost default draft. Include open (draft to open), convert (open to converted), lose (open to lost); all actions have no inputs and allow owner/operator, with owner review required. No other fields or rules. Include Open leads and Converted leads saved views, Sales pipeline navigation, and Contact details and Pipeline progress record sections. This is test data only.'
+  const brief = 'Assemble a purchasing application from Kernel catalog modules purchasing.request and directory.party. Track purchase requests and suppliers. Owners review every purchase. Do not invent entities or extra fields. This is test data only.'
   console.log('RUN clear-request clarification')
   const clear = await clarifyApplication(brief, undefined, trace('clarification'))
   assert.equal(clear.questions.length, 0, 'Fully specified request should bypass clarification.')
   console.log('RUN application generation')
-  const app = await buildApplication(brief, undefined, trace('application'))
-  assert.equal(app.entities.length, 1)
-  const entity = app.entities[0]
-  assert.equal(entity.slug, 'crm')
-  assert.deepEqual(Object.keys(entity.entity.fields).sort(), ['company', 'contact', 'source', 'status', 'title'])
-  assert(app.views.length >= 2 && app.layouts.length > 0)
-  const draft = await kernel.saveDraft(agent, { brief, definition: app, source: 'model' })
-  assert.deepEqual((await kernel.getDraft(owner, draft.id)).definition, app)
+  const assembly = await buildAssembly(brief, undefined, trace('application'))
+  assert.ok(assembly.modules.some(item => item.use === 'purchasing.request'))
+  assert.ok(assembly.modules.some(item => item.use === 'directory.party'))
+  const app = compileAssembly(assembly)
+  const requestEntity = app.entities.find(entity => entity.actions.some(action => action.name === 'submit'))
+  const partyEntity = app.entities.find(entity => entity.slug !== requestEntity?.slug)
+  assert.ok(requestEntity && partyEntity)
+  const draft = await kernel.saveDraft(owner, { brief, assembly, source: 'model' })
+  assert.deepEqual((await kernel.getDraft(owner, draft.id)).assembly, assembly)
   const published = await kernel.publishDraft(owner, draft.id, draft.version)
   assert.equal((await kernel.snapshot(owner, published.slug)).records.length, 0)
   check('Live generation validates, persists, and publishes without preview records')
 
-  const lead = await kernel.createRecord(owner, { title: 'QA live lead', company: 'QA Synthetic Company', contact: 'QA Contact', source: 'Inbound' }, `${published.slug}__crm`)
+  const supplier = await kernel.createRecord(owner, { title: 'QA Supplier', contact: 'qa@example.test' }, `${published.slug}__${partyEntity.slug}`)
+  const requestRecord = await kernel.createRecord(owner, { title: 'QA licenses', supplier: supplier.id, amountCents: 50000, category: 'Software', justification: 'Synthetic live purchasing check.' }, `${published.slug}__${requestEntity.slug}`)
   const state = await kernel.snapshot(owner, published.slug)
-  const plan = await planOperation({ instruction: 'Open QA live lead in the pipeline. Only propose the change for owner review.', records: state.records, capabilities: state.capabilities.map(c => c.definition), pending: [] })
-  assert.equal(plan.recordId, lead.id)
-  assert.equal(plan.action, 'open')
-  const staged = await kernel.stage(agent, { recordId: plan.recordId!, action: plan.action!, input: plan.input, idempotencyKey: 'live-open-once' })
+  const plan = await planOperation({ instruction: 'Submit QA licenses for owner review. Only propose the change.', records: state.records, capabilities: state.capabilities.map(c => c.definition), pending: [] })
+  assert.equal(plan.recordId, requestRecord.id)
+  assert.equal(plan.action, 'submit')
+  const staged = await kernel.stage(agent, { recordId: plan.recordId!, action: plan.action!, input: plan.input, idempotencyKey: 'live-submit-once' })
   assert.equal(staged.status, 'staged')
-  const readLead = async () => (await db!.businessRecord.findUniqueOrThrow({ where: { id: lead.id } })).data as RecordData
+  const readLead = async () => (await db!.businessRecord.findUniqueOrThrow({ where: { id: requestRecord.id } })).data as RecordData
   assert.equal((await readLead()).status, 'draft')
   await assert.rejects(kernel.review(agent, staged.change!.id, 'apply'))
   await kernel.review(owner, staged.change!.id, 'apply')
-  assert.equal((await readLead()).status, 'open')
+  assert.equal((await readLead()).status, 'submitted')
   check('Live operational choice stages correctly and requires owner review')
 
   const change = await kernel.editProject(owner, published.slug)
-  const revised = await buildApplication('Add only an optional editable string field internalNote labeled Internal note to crm, with no default. Preserve every existing entity, field, action, policy, setting, navigation item, saved view and layout unchanged.', change.definition)
-  assert.equal(revised.entities[0].entity.fields.internalNote?.type, 'string')
-  assert.equal(revised.entities[0].entity.fields.internalNote.required, false)
-  const withoutNote = structuredClone(revised.entities[0]); delete withoutNote.entity.fields.internalNote
-  assert.deepEqual(withoutNote, entity, 'Additive request must preserve the existing entity contract.')
-  assert.deepEqual(revised.views, app.views)
-  assert.deepEqual(revised.layouts, app.layouts)
-  assert.deepEqual(revised.navigation, app.navigation)
-  assert.equal(revised.startView, app.startView)
-  const saved = await kernel.saveDraft(agent, { id: change.id, expectedVersion: change.version, brief: 'Add optional Internal note', definition: revised, source: 'model' })
+  const revisedAssembly = await buildAssembly('Keep the same catalog modules and links. Only rename the application to Team purchasing QA.', change.assembly, trace('application'))
+  assert.ok(revisedAssembly.modules.some(item => item.use === 'purchasing.request'))
+  assert.ok(revisedAssembly.modules.some(item => item.use === 'directory.party'))
+  const revised = compileAssembly(revisedAssembly)
+  assert.equal(revised.name, 'Team purchasing QA')
+  assert.deepEqual(revised.entities.map(entity => entity.slug), app.entities.map(entity => entity.slug))
+  const saved = await kernel.saveDraft(owner, { id: change.id, expectedVersion: change.version, brief: 'Rename the assembled purchasing application', assembly: revisedAssembly, source: 'model' })
   const before = await readLead()
   const preview = await kernel.previewMigration(owner, saved.id, saved.version)
   assert.equal(preview.report.canPublish, true)
@@ -113,8 +109,7 @@ try {
   console.error(`FAIL ${report.failure}`)
   process.exitCode = 1
 } finally {
-  if (db) await db.$disconnect()
-  if (folder) await rm(folder, { recursive: true, force: true })
+  if (close) await close()
   const path = join(tmpdir(), 'kernel-model-acceptance.json')
   await writeFile(path, JSON.stringify(report, null, 2), { mode: 0o600 })
   console.log(`Report: ${path}`)

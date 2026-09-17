@@ -1,5 +1,6 @@
 import { validateApplication } from './application'
 import { applicationPresentation, type ApplicationPresentation } from './application-views'
+import { isPurchasingDemo } from './purchasing-demo'
 export type ShellKind = 'workbench' | 'site'
 
 export type ProjectTemplate = {
@@ -14,6 +15,7 @@ export type ProjectSnapshot = {
   presentation?: ApplicationPresentation
   version: number
   editable: boolean
+  demo: boolean
   slug: string
   name: string
   description: string
@@ -87,7 +89,8 @@ export const projectTemplates: ProjectTemplate[] = [
   },
 ]
 
-export function projectKind(project: { slug: string; shell: ShellKind }) {
+export function projectKind(project: { slug: string; shell: ShellKind; demo?: boolean }) {
+  if (project.demo || isPurchasingDemo(project.slug)) return 'Demo · Purchase queue'
   if (project.shell === 'site') return 'Public journal'
   const kinds: Record<string, string> = {
     procurement: 'Purchase queue',
@@ -116,6 +119,7 @@ export function toProjectSnapshot(row: { slug: string; name: string; shell: stri
   return {
     version: row.version ?? 1,
     editable: Boolean(row.definition),
+    demo: isPurchasingDemo(row.slug),
     slug: row.slug,
     name: row.name,
     description: row.description || template?.description || '',
@@ -130,5 +134,9 @@ export function toProjectSnapshot(row: { slug: string; name: string; shell: stri
 
 export function sortProjects<T extends { slug: string }>(rows: T[]) {
   const order = new Map(projectTemplates.map((item, index) => [item.slug, index]))
-  return [...rows].sort((a, b) => (order.get(a.slug) ?? 99) - (order.get(b.slug) ?? 99))
+  return [...rows].sort((a, b) => {
+    const demo = Number(isPurchasingDemo(b.slug)) - Number(isPurchasingDemo(a.slug))
+    if (demo) return demo
+    return (order.get(a.slug) ?? 99) - (order.get(b.slug) ?? 99)
+  })
 }

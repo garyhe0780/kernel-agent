@@ -1,39 +1,19 @@
-import { after, before, test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { PrismaClient } from '@prisma/client'
-import { purchasingExample } from '../src/kernel/application'
+import { purchasingAssembly, purchasingExample } from '../src/kernel/application'
+import { openTestDatabase } from './test-database'
 import { AgentAccess } from '../src/kernel/agent-access.server'
 import { handleAgentCredential } from '../src/lib/agent-api.server'
 import { Kernel, KernelError } from '../src/kernel/engine.server'
-import { evaluate, procurement, validateFields, type Principal, type RecordData } from '../src/kernel/definition'
+import { applySettings, definitionSchema, evaluate, validateFields, type Principal, type RecordData } from '../src/kernel/definition'
+import { procurement } from '../src/kernel/procurement'
+import { commandAllows, kernelCommands } from '../src/kernel/commands'
 import { composePublic, composeEditorial } from '../src/kernel/packages'
 
-const folder = mkdtempSync(join(tmpdir(), 'kernel-tests-'))
-const db = new PrismaClient({ datasourceUrl: `file:${join(folder, 'test.db')}` })
+const { db, close } = await openTestDatabase()
 const kernel = new Kernel(db)
 let sequence = 0
-
-before(async () => {
-  const migrations = [
-    new URL('../prisma/migrations/202609100001_initial/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609110001_projects/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609120001_project_builder/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609120002_application_versions/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609120003_agent_credentials/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609120004_builder_plans/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609130001_multiple_workspaces/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609130002_workspace_invitations/migration.sql', import.meta.url),
-    new URL('../prisma/migrations/202609130003_invitation_issuer/migration.sql', import.meta.url),
-  ]
-  for (const file of migrations) {
-    const migration = readFileSync(file, 'utf8')
-    for (const statement of migration.split(';').filter(s => s.trim())) await db.$executeRawUnsafe(statement)
-  }
-})
-after(async () => { await db.$disconnect(); rmSync(folder, { recursive: true, force: true }) })
+after(close)
 
 async function fixture() {
   const id = `user-${++sequence}`
@@ -112,12 +92,12 @@ test('a competing applied proposal makes the old record version stale', async ()
 test('publishing policies versions the definition and invalidates old proposals', async () => {
   const { human, agent, record } = await fixture()
   const staged = await kernel.stage(agent, { recordId: record.id, action: 'approve', input: {}, idempotencyKey: 'before-publish' })
-  const published = await kernel.updatePolicies(human, 1, { approvalLimitCents: 100000, requireVerifiedSupplier: true })
+  const published = await kernel.publishSettings(human, { capability: 'procurement', expectedVersion: 1, settings: { approvalLimitCents: 100000, requireVerifiedSupplier: true } })
   assert.equal(published.version, 2)
   await assert.rejects(kernel.review(human, staged.change!.id, 'apply'), /changed/)
   const next = await kernel.stage(agent, { recordId: record.id, action: 'approve', input: {}, idempotencyKey: 'after-publish' })
   assert.equal(next.status, 'blocked')
-  await assert.rejects(kernel.updatePolicies(human, 1, { approvalLimitCents: 1000000, requireVerifiedSupplier: true }), /newer/)
+  await assert.rejects(kernel.publishSettings(human, { capability: 'procurement', expectedVersion: 1, settings: { approvalLimitCents: 1000000, requireVerifiedSupplier: true } }), /newer/)
   const cap = await db.capability.findFirstOrThrow({ where: { workspaceId: human.workspaceId, slug: 'procurement' } })
   assert.equal(await db.capabilityVersion.count({ where: { capabilityId: cap.id } }), 2)
 })
@@ -133,9 +113,9 @@ test('rejecting does not mutate the business record', async () => {
 test('creation rejects unknown fields and direct status injection', async () => {
   const { human } = await fixture()
   const data = { title: 'New request', supplier: 'Supplier', amountCents: 10000, category: 'Office', justification: 'Office supplies needed' }
-  await assert.rejects(kernel.createRecord(human, { ...data, status: 'approved' }), /set by the kernel/)
-  await assert.rejects(kernel.createRecord(human, { ...data, workspaceId: 'someone-else' }), /Unknown field/)
-  const record = await kernel.createRecord(human, data)
+  await assert.rejects(kernel.createRecord(human, { ...data, status: 'approved' }, 'procurement'), /set by the kernel/)
+  await assert.rejects(kernel.createRecord(human, { ...data, workspaceId: 'someone-else' }, 'procurement'), /Unknown field/)
+  const record = await kernel.createRecord(human, data, 'procurement')
   assert.equal((record.data as RecordData).status, 'draft')
   assert.equal((record.data as RecordData).supplierVerified, false)
 })
@@ -153,6 +133,67 @@ test('required action input and monetary bounds are enforced', () => {
   assert.throws(() => evaluate(procurement, 'decline', record, {}, 'owner'), /required/)
   assert.throws(() => validateFields(procurement.entity.fields, { ...record, amountCents: 1.5 }), /whole/)
   assert.throws(() => validateFields(procurement.entity.fields, { ...record, amountCents: -1 }), /range/)
+})
+
+test('the command catalog keeps construction on Core and operate-agents on stage', () => {
+  assert.equal(kernelCommands.stage.layer, 'core')
+  assert.equal(kernelCommands.publish_settings.layer, 'core')
+  assert.equal(kernelCommands.save_draft.layer, 'core')
+  assert.equal(kernelCommands.publish_draft.layer, 'core')
+  assert.equal(kernelCommands.install_purchasing_demo.layer, 'fixture')
+  assert.equal(kernelCommands.operate.layer, 'host')
+  assert.deepEqual(Object.keys(kernelCommands).filter(name => commandAllows(name, 'operate-agent')), ['stage'])
+  assert.deepEqual(Object.keys(kernelCommands).filter(name => commandAllows(name, 'construct-agent')), ['save_draft', 'edit_project', 'preview_migration', 'publish_draft'])
+  assert.equal(commandAllows('stage', 'operate-agent'), true)
+  assert.equal(commandAllows('publish_draft', 'operate-agent'), false)
+  assert.equal(commandAllows('stage', 'construct-agent'), false)
+  assert.equal(commandAllows('publish_settings', 'operate-agent'), false)
+  assert.equal(commandAllows('create', 'operate-agent'), false)
+  assert.ok(!Object.keys(kernelCommands).some(name => /procurement|approval|crm|ticket/i.test(name)))
+})
+
+const queue = definitionSchema.parse({
+  slug: 'queue', name: 'Queue', description: 'Track tickets against a response clock.',
+  entity: {
+    name: 'ticket', label: 'Ticket',
+    fields: {
+      title: { label: 'Ticket', type: 'string', min: 3, max: 80 },
+      waitHours: { label: 'Hours waiting', type: 'integer', min: 0, max: 720 },
+      status: { label: 'Status', type: 'enum', options: ['open', 'closed'], default: 'open', editable: false },
+    },
+  },
+  settings: { slaHours: 24, requireAssignee: true },
+  reviewerRoles: ['owner'],
+  actions: [{
+    name: 'close', label: 'Close ticket', description: 'Propose closing this ticket.',
+    roles: ['owner', 'operator'], input: {},
+    preconditions: [{ id: 'open', label: 'Ticket is open', field: 'status', operator: 'eq', value: 'open' }],
+    policies: [{ id: 'sla', label: 'Within SLA', field: 'waitHours', operator: 'lte', setting: 'slaHours' }],
+    effects: { status: 'closed' },
+  }],
+})
+
+test('applySettings accepts the same keys for unrelated businesses and rejects swapped shapes', () => {
+  assert.equal(applySettings(procurement, { approvalLimitCents: 50000, requireVerifiedSupplier: false }).settings.approvalLimitCents, 50000)
+  assert.equal(applySettings(queue, { slaHours: 4, requireAssignee: false }).settings.slaHours, 4)
+  assert.throws(() => applySettings(procurement, { slaHours: 4, requireAssignee: false }), /published keys/)
+  assert.throws(() => applySettings(queue, { approvalLimitCents: 1, requireVerifiedSupplier: true }), /published keys/)
+  assert.throws(() => applySettings(queue, { slaHours: 4 }), /published keys/)
+  assert.throws(() => applySettings(queue, { slaHours: 4.5, requireAssignee: true }), /whole number/)
+})
+
+test('publishSettings versions any capability settings and refuses managed applications', async () => {
+  const { human } = await fixture()
+  await db.capability.create({ data: { workspaceId: human.workspaceId, slug: 'queue', definition: queue, versions: { create: { version: 1, definition: queue, publishedBy: human.userId } } } })
+  const tickets = await kernel.publishSettings(human, { capability: 'queue', expectedVersion: 1, settings: { slaHours: 4, requireAssignee: false } })
+  assert.equal(tickets.version, 2)
+  assert.deepEqual(tickets.definition.settings, { slaHours: 4, requireAssignee: false })
+  const purchasing = await kernel.publishSettings(human, { capability: 'procurement', expectedVersion: 1, settings: { approvalLimitCents: 250000, requireVerifiedSupplier: false } })
+  assert.equal(purchasing.definition.settings.approvalLimitCents, 250000)
+  await assert.rejects(kernel.publishSettings(human, { capability: 'queue', expectedVersion: 2, settings: { slaHours: 4 } }), /published keys/)
+  const built = await publishedFixture()
+  const requests = await db.capability.findFirstOrThrow({ where: { workspaceId: built.human.workspaceId, slug: `${built.slug}__requests` } })
+  await assert.rejects(kernel.publishSettings(built.human, { capability: requests.slug, expectedVersion: requests.version, settings: definitionSchema.parse(requests.definition).settings }), (error: unknown) => error instanceof KernelError && error.code === 'MANAGED_DEFINITION')
 })
 
 test('a workspace installs Site, Blog, Procurement, and suite packages', async () => {
@@ -272,24 +313,87 @@ test('composeEditorial includes drafts and omits procurement', () => {
   ])
 })
 
-test('new accounts start empty and stay empty across snapshots', async () => {
+test('new accounts receive a labeled purchasing demo with sample records', async () => {
   const id = `user-${++sequence}`
   await db.user.create({ data: { id, name: 'New Builder', email: `${id}@example.test` } })
   const member = await kernel.ensureWorkspace({ id, name: 'New Builder' })
   const p: Principal = { userId: id, name: 'New Builder', workspaceId: member.workspaceId, role: 'owner', kind: 'human' }
-  assert.equal((await kernel.snapshot(p)).projects.length, 0)
+  const first = await kernel.snapshot(p)
+  assert.equal(first.projects.length, 1)
+  assert.equal(first.projects[0].demo, true)
+  assert.equal(first.projects[0].slug, 'demo-purchasing')
+  assert.equal(first.projects[0].name, 'Demo · Team purchasing')
+  assert.equal(first.records.length, 12)
+  assert.equal(first.records.filter(record => record.capability.endsWith('__requests')).length, 6)
   await kernel.ensureWorkspace({ id, name: 'New Builder' })
-  assert.equal((await kernel.snapshot(p)).records.length, 0)
+  assert.equal((await kernel.snapshot(p)).projects.length, 1)
+  const other = await fixture()
+  assert.equal((await kernel.snapshot(other.human)).records.some(record => record.capability.startsWith('demo-purchasing__')), false)
+  assert.ok(first.records.every(record => record.capability.startsWith('demo-purchasing__')))
+  const draft = first.records.find(record => (record.data as RecordData).status === 'draft')
+  assert.ok(draft)
+  const staged = await kernel.stage(p, { recordId: draft.id, action: 'submit', input: {}, idempotencyKey: `demo-submit-${id}` })
+  assert.equal(staged.status, 'staged')
+  assert.ok(staged.change)
+  await kernel.review(p, staged.change.id, 'apply')
+  assert.equal(((await db.businessRecord.findUniqueOrThrow({ where: { id: draft.id } })).data as RecordData).status, 'submitted')
+})
+
+test('purchasing demo can be removed and reinstalled, and extra workspaces stay empty', async () => {
+  const id = `user-${++sequence}`
+  await db.user.create({ data: { id, name: 'Demo Owner', email: `${id}@example.test` } })
+  const member = await kernel.ensureWorkspace({ id, name: 'Demo Owner' })
+  const owner: Principal = { userId: id, name: 'Demo Owner', workspaceId: member.workspaceId, role: 'owner', kind: 'human' }
+  const operator: Principal = { ...owner, kind: 'agent' }
+  await assert.rejects(kernel.removePurchasingDemoProject(operator), /owner/)
+  await kernel.removePurchasingDemoProject(owner)
+  const emptied = await kernel.snapshot(owner)
+  assert.equal(emptied.projects.length, 0)
+  assert.equal(emptied.records.length, 0)
+  await assert.rejects(kernel.removePurchasingDemoProject(owner), /not in this workspace/)
+  await assert.rejects(kernel.installPurchasingDemoProject(operator), /owner/)
+  const restored = await kernel.installPurchasingDemoProject(owner)
+  assert.equal(restored.installed, true)
+  assert.equal(restored.slug, 'demo-purchasing')
+  assert.equal((await kernel.installPurchasingDemoProject(owner)).installed, false)
+  assert.equal((await kernel.snapshot(owner)).projects[0].demo, true)
+  const created = await kernel.createWorkspace(owner, 'Empty extra workspace')
+  const extra: Principal = { ...owner, workspaceId: created.id }
+  const extraState = await kernel.snapshot(extra)
+  assert.equal(extraState.projects.length, 0)
+  assert.equal(extraState.records.length, 0)
+})
+
+test('assembled drafts compile, persist the assembly, and reopen it when changing the published application', async () => {
+  const { purchasingAssembly, compileAssembly } = await import('../src/kernel/application')
+  const { human } = await fixture()
+  assert.equal((await kernel.listModules(human)).some(item => item.id === 'purchasing.request' && item.defaultAlias === 'requests'), true)
+  const sales = (await kernel.listModules(human)).find(item => item.id === 'sales.opportunity')
+  assert.equal(sales?.defaultAlias, 'opportunities')
+  assert.equal(sales?.actions.some(action => action.name === 'convert'), true)
+  assert.equal(sales?.surfaces.some(surface => surface.kind === 'queue' && surface.name === 'Open pipeline'), true)
+  const assembly = purchasingAssembly()
+  await assert.rejects(kernel.saveDraft(human, { brief: 'Purchasing for our team', assembly: { ...assembly, modules: [] }, source: 'agent' }))
+  const draft = await kernel.saveDraft(human, { brief: 'Purchasing for our team', assembly, source: 'agent' })
+  assert.equal(draft.assembly?.modules[0].use, 'purchasing.request')
+  assert.deepEqual(draft.definition.entities.map(entity => entity.slug), compileAssembly(assembly).entities.map(entity => entity.slug))
+  const published = await kernel.publishDraft(human, draft.id, draft.version)
+  const state = await kernel.snapshot(human, published.slug)
+  assert.equal(state.capabilities.length, 2)
+  assert.equal(state.records.length, 0)
+  const change = await kernel.editProject(human, published.slug)
+  assert.equal(change.assembly?.modules[1].use, 'directory.party')
 })
 
 test('draft publication is versioned, idempotent, isolated, and creates no example records', async () => {
   const { purchasingExample } = await import('../src/kernel/application')
   const { human, agent } = await fixture()
   const other = await fixture()
-  const draft = await kernel.saveDraft(agent, { brief: 'Purchasing for our team', definition: purchasingExample(), source: 'example' })
+  const draft = await kernel.saveDraft(human, { brief: 'Purchasing for our team', definition: purchasingExample(), source: 'example' })
   assert.equal((await kernel.listDrafts(human))[0].id, draft.id)
   assert.equal((await kernel.listDrafts(other.human)).length, 0)
   await assert.rejects(kernel.getDraft(other.human, draft.id))
+  await assert.rejects(kernel.saveDraft(agent, { brief: 'Purchasing for our team', definition: purchasingExample(), source: 'example' }), /owners/)
   await assert.rejects(kernel.publishDraft(agent, draft.id, 1))
   await assert.rejects(kernel.publishDraft(other.human, draft.id, 1))
   const revised = await kernel.saveDraft(human, { id: draft.id, expectedVersion: 1, brief: draft.brief, definition: { ...purchasingExample(), name: 'Revised purchasing' }, source: 'manual' })
@@ -541,8 +645,8 @@ test('agent scopes reject unrelated records, forbidden actions, human functions 
   await assert.rejects(kernel.stage(f.machine, { recordId: other.record.id, action: 'approve', input: {}, idempotencyKey: 'out-of-tenant' }), /not found/)
   await assert.rejects(kernel.stage(f.machine, { recordId: f.record.id, action: 'reject', input: {}, idempotencyKey: 'out-of-action' }), /outside/)
   await assert.rejects(kernel.snapshot(f.machine), /only read/)
-  await assert.rejects(kernel.createRecord(f.machine, {}), /only read/)
-  await assert.rejects(kernel.saveDraft(f.machine, { brief: 'A test', definition: purchasingExample(), source: 'manual' }), /only read/)
+  await assert.rejects(kernel.createRecord(f.machine, {}, 'procurement'), /only read/)
+  await assert.rejects(kernel.saveDraft(f.machine, { brief: 'A test', definition: purchasingExample(), source: 'manual' }), /stage proposals/)
   await assert.rejects(kernel.stage({ ...f.machine, role: 'owner' }, { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'forged-role' }), /identity/)
   await assert.rejects(access.create(f.machine, { project: f.project.slug, name: 'Nested', expiresInDays: 1, actions: f.credential.actions }), /owner/)
   assert.equal((await access.list(other.human, f.project.slug)).length, 0)
@@ -556,7 +660,7 @@ test('revocation, expiry, owner removal and definition changes prevent use and p
     if (mutation === 'revoke') { await access.revoke(f.human, f.credential.id); await access.revoke(f.human, f.credential.id) }
     if (mutation === 'expire') await db.agentCredential.update({ where: { id: f.credential.id }, data: { expiresAt: new Date(0) } })
     if (mutation === 'demote') await db.membership.update({ where: { userId_workspaceId: { userId: f.human.userId, workspaceId: f.human.workspaceId } }, data: { role: 'operator' } })
-    if (mutation === 'definition') await kernel.updatePolicies(f.human, 1, { approvalLimitCents: 1000000, requireVerifiedSupplier: true })
+    if (mutation === 'definition') await kernel.publishSettings(f.human, { capability: 'procurement', expectedVersion: 1, settings: { approvalLimitCents: 1000000, requireVerifiedSupplier: true } })
     await assert.rejects(kernel.stage(f.machine, { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'after-mutation' }))
     if (mutation !== 'definition') await assert.rejects(access.authenticate(f.token))
     else assert.equal((await kernel.agentSnapshot(f.machine)).staleActions.length, 1)
@@ -703,9 +807,80 @@ test('MCP action calls preserve tenant and entity boundaries and reject stale sc
   const blocked = await call('tools/call', { name, arguments: { ...command, recordId: expensive.id } })
   assert.equal(blocked.result.isError, true)
   assert.equal(blocked.result.structuredContent.status, 'blocked')
-  await kernel.updatePolicies(f.human, 1, { approvalLimitCents: 1000000, requireVerifiedSupplier: true })
+  await kernel.publishSettings(f.human, { capability: 'procurement', expectedVersion: 1, settings: { approvalLimitCents: 1000000, requireVerifiedSupplier: true } })
   assert.equal((await call('tools/list')).result.tools.length, 2)
   assert.equal((await call('tools/call', { name, arguments: command })).result.isError, true)
+})
+
+test('builder credentials create and publish applications over MCP and cannot operate records', async () => {
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+  const { handleMcp } = await import('../src/lib/mcp.server')
+  const f = await credentialFixture()
+  const created = await kernel.createWorkspace(f.human, 'Builder workspace')
+  const owner: Principal = { ...f.human, workspaceId: created.id }
+  await assert.rejects(access.create(owner, { kind: 'construct', name: 'Bad', expiresInDays: 30, project: f.project.slug }), /workspace-wide/)
+  const issued = await access.create(owner, { kind: 'construct', name: 'Cursor', expiresInDays: 30 })
+  const builder = await access.authenticate(issued.token)
+  assert.equal(builder.agentGrant, 'construct')
+  assert.equal(builder.role, 'owner')
+  assert.equal((await access.listWorkspace(owner)).some(item => item.kind === 'construct' && item.id === issued.credential.id), true)
+  assert.equal((await handleAgentCredential(new Request('http://localhost/api/agent', { headers: { Authorization: `Bearer ${issued.token}` } }), access, kernel)).status, 403)
+  await assert.rejects(kernel.stage(builder, { recordId: f.record.id, action: 'approve', input: {}, idempotencyKey: 'builder-stage' }), /creates applications/)
+  const client = new Client({ name: 'kernel-builder-test', version: '1.0.0' })
+  const transport = new StreamableHTTPClientTransport(new URL('http://localhost:3000/api/mcp'), {
+    requestInit: { headers: { Authorization: `Bearer ${issued.token}` } },
+    fetch: async (url, init) => handleMcp(new Request(url, init), access, kernel),
+  })
+  try {
+    await client.connect(transport)
+    const tools = await client.listTools()
+    assert.deepEqual(tools.tools.map(tool => tool.name), ['list_blocks', 'list_modules', 'list_applications', 'list_drafts', 'get_draft', 'save_draft', 'edit_project', 'preview_migration', 'publish_draft'])
+    const forbidden = await client.callTool({ name: 'list_records', arguments: {} })
+    assert.equal(forbidden.isError, true)
+    const modules = await client.callTool({ name: 'list_modules', arguments: {} })
+    assert.equal(modules.isError, false)
+    const catalog = (modules.structuredContent as { modules: { id: string }[] }).modules
+    assert.ok(catalog.some(item => item.id === 'purchasing.request'))
+    assert.ok(catalog.some(item => item.id === 'directory.party'))
+    assert.ok(catalog.some(item => item.id === 'sales.opportunity'))
+    const blocks = await client.callTool({ name: 'list_blocks', arguments: {} })
+    assert.equal(blocks.isError, false)
+    const blockList = (blocks.structuredContent as { blocks: { id: string; wired: boolean }[] }).blocks
+    assert.ok(blockList.some(item => item.id === 'table' && item.wired))
+    assert.ok(blockList.some(item => item.id === 'chart' && !item.wired))
+    const { purchasingAssembly, salesAssembly } = await import('../src/kernel/application')
+    const invented = await client.callTool({ name: 'save_draft', arguments: { brief: 'Invented application', definition: purchasingExample() } })
+    assert.equal(invented.isError, true)
+    const sales = await client.callTool({ name: 'save_draft', arguments: { brief: 'Sales pipeline for the operations team', assembly: salesAssembly() } })
+    assert.equal(sales.isError, false)
+    const salesDraft = (sales.structuredContent as { draft: { id: string; version: number } }).draft
+    const salesPublished = await client.callTool({ name: 'publish_draft', arguments: { id: salesDraft.id, expectedVersion: salesDraft.version } })
+    assert.equal(salesPublished.isError, false)
+    const saved = await client.callTool({ name: 'save_draft', arguments: { brief: 'Purchasing for the operations team', assembly: purchasingAssembly() } })
+    assert.equal(saved.isError, false)
+    const draft = (saved.structuredContent as { draft: { id: string; version: number } }).draft
+    const published = await client.callTool({ name: 'publish_draft', arguments: { id: draft.id, expectedVersion: draft.version } })
+    assert.equal(published.isError, false)
+    const publication = (published.structuredContent as { publication: { slug: string; version: number } }).publication
+    const listed = await client.callTool({ name: 'list_applications', arguments: {} })
+    const applications = (listed.structuredContent as { applications: { slug: string }[] }).applications
+    assert.ok(applications.some(app => app.slug === publication.slug))
+    const operate = await access.create(owner, { project: publication.slug, name: 'Operator', expiresInDays: 30, actions: [{ capability: `${publication.slug}__requests`, action: 'submit', version: 1 }] })
+    const operateClient = new Client({ name: 'kernel-operate-isolation', version: '1.0.0' })
+    const operateTransport = new StreamableHTTPClientTransport(new URL('http://localhost:3000/api/mcp'), {
+      requestInit: { headers: { Authorization: `Bearer ${operate.token}` } },
+      fetch: async (url, init) => handleMcp(new Request(url, init), access, kernel),
+    })
+    try {
+      await operateClient.connect(operateTransport)
+      const operateTools = await operateClient.listTools()
+      assert.ok(operateTools.tools.some(tool => tool.name === 'list_records'))
+      assert.ok(!operateTools.tools.some(tool => tool.name === 'save_draft'))
+      const operateSave = await operateClient.callTool({ name: 'save_draft', arguments: { brief: 'Should not publish', assembly: purchasingAssembly() } })
+      assert.equal(operateSave.isError, true)
+    } finally { await operateClient.close() }
+  } finally { await client.close() }
 })
 
 test('saved views publish with namespaced navigation and view-only revisions preserve pending actions', async () => {
@@ -726,7 +901,7 @@ test('saved views publish with namespaced navigation and view-only revisions pre
   next.layouts[0].sections[0].when = { field: 'status', operator: 'eq', value: 'approved' }
   next.views[0].name = 'Purchases to review'
   next.navigation.reverse()
-  next.startView = 'active_suppliers'
+  next.startView = 'active'
   const saved = await kernel.saveDraft(human, { id: edit.id, expectedVersion: edit.version, brief: edit.brief, definition: next, source: 'manual' })
   const preview = await kernel.previewMigration(human, saved.id, saved.version)
   assert.equal(preview.report.updatedRecordCount, 0)
@@ -799,7 +974,8 @@ test('plans persist decisions, require confirmation and reject late build result
   const refreshed = await kernel.planState(human, first.id, edited.version, 'planning', { ...content, needsProposal: false })
   const again = await kernel.planState(human, first.id, refreshed.version, 'confirmed')
   const claim = await kernel.planState(human, first.id, again.version, 'building')
-  const draft = await kernel.finishPlan(human, first.id, claim.version, purchasingExample())
+  const draft = await kernel.finishPlan(human, first.id, claim.version, purchasingAssembly())
+  assert.equal(draft.assembly?.modules[0].use, 'purchasing.request')
   const generated = (await kernel.listPlans(human))[0]
   assert.equal(generated.status, 'generated')
   await kernel.savePlan(human, { id: first.id, expectedVersion: generated.version, content })

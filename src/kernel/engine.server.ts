@@ -1,11 +1,15 @@
 import { planningContentSchema, planBrief } from './builder-plan'
 import { createHash, randomUUID } from 'node:crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
-import { definitionSchema, evaluate, procurement, toolContracts, validateFields, type Principal, type RecordData } from './definition'
+import { applySettings, definitionSchema, evaluate, toolContracts, validateFields, type Principal, type RecordData } from './definition'
 import { catalog, catalogFor, composePublic, seedFor } from './packages'
-import { projectTemplates, sortProjects, toProjectSnapshot } from './projects'
-import { validateApplication } from './application'
+import { asStringList, projectTemplates, sortProjects, toProjectSnapshot } from './projects'
+import { compileAssembly, validateApplication } from './application'
+import { validateAssembly, type Assembly } from './assembly'
+import { catalogSnapshot } from './modules'
+import { blockCatalog } from './blocks'
 import { canonical, namespaceApplication, planMigration, type MigrationPreview } from './migration'
+import { DEMO_PURCHASING_SLUG, purchasingDemoApplication, purchasingDemoAssembly, purchasingDemoRequests, purchasingDemoSuppliers } from './purchasing-demo'
 
 import { KernelError } from './errors'
 export { KernelError } from './errors'
@@ -17,10 +21,11 @@ const json = (value: unknown) => value as Prisma.InputJsonValue
 export class Kernel {
   constructor(private db: PrismaClient) {}
 
-  private async authorize(tx: Tx, principal: Principal, agentAllowed = false) {
+  private async authorize(tx: Tx, principal: Principal, agent: false | 'operate' | 'construct' = false) {
     if (principal.agentCredentialId) {
-      if (!agentAllowed) throw new KernelError('FORBIDDEN', 'Agent credentials can only read their application and stage scoped proposals.', 403)
+      if (!agent) throw new KernelError('FORBIDDEN', 'Agent credentials can only read their application and stage scoped proposals.', 403)
       const access = await resolveAgent(tx, principal.agentCredentialId)
+      if (access.p.agentGrant !== agent) throw new KernelError('FORBIDDEN', agent === 'construct' ? 'This credential can only stage proposals on its application.' : 'This credential creates applications over MCP; it cannot stage record changes.', 403)
       if (principal.kind !== 'agent' || principal.userId !== access.p.userId || principal.workspaceId !== access.p.workspaceId || principal.role !== access.p.role) throw new KernelError('FORBIDDEN', 'Invalid agent identity.', 403)
       return
     }
@@ -28,7 +33,24 @@ export class Kernel {
     if (!membership || membership.role !== principal.role) throw new KernelError('FORBIDDEN', 'You do not have access to this workspace.', 403)
   }
 
-  private async capability(tx: Tx, workspaceId: string, slug = 'procurement') {
+  private assertBuilder(p: Principal, message = 'Only owners can build projects.') {
+    if (p.role !== 'owner' || (p.kind !== 'human' && p.agentGrant !== 'construct')) throw new KernelError('FORBIDDEN', message, 403)
+  }
+
+  private readDraft(row: { id: string; brief: string; definition: unknown; assembly?: unknown; version: number; status: string; source: string; projectSlug: string | null; baseProjectVersion: number | null; updatedAt: Date | string }) {
+    return { ...row, definition: validateApplication(row.definition), assembly: row.assembly == null ? null : validateAssembly(row.assembly) }
+  }
+
+  private compileSave(command: { definition?: unknown; assembly?: unknown }): { definition: ReturnType<typeof validateApplication>; assembly: Assembly | null } {
+    if (command.assembly !== undefined && command.assembly !== null) {
+      try { return { assembly: validateAssembly(command.assembly), definition: compileAssembly(command.assembly) } }
+      catch (error) { throw error instanceof KernelError ? error : new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid assembly.', 422) }
+    }
+    if (command.definition === undefined) throw new KernelError('INVALID_INPUT', 'Provide an assembly of catalog modules, or a definition.', 400)
+    return { assembly: null, definition: validateApplication(command.definition) }
+  }
+
+  private async capability(tx: Tx, workspaceId: string, slug: string) {
     const cap = await tx.capability.findUnique({ where: { workspaceId_slug: { workspaceId, slug } } })
     if (!cap) throw new KernelError('NOT_FOUND', 'Capability not found.', 404)
     return { ...cap, definition: definitionSchema.parse(cap.definition) }
@@ -75,9 +97,74 @@ export class Kernel {
     }
   }
 
+  /** Test/example fixture path. Ordinary workspaces install the purchasing demo instead. */
   private async bootstrap(tx: Tx, workspaceId: string, userId: string, workspaceName: string) {
     await this.installPackages(tx, workspaceId, userId, workspaceName)
     await this.installProjects(tx, workspaceId)
+    const seedRecords = [
+      { title: 'Design team software licenses', supplier: 'Figma', amountCents: 432000, category: 'Software', justification: 'Annual seats for the six-person product design team.', supplierVerified: true, status: 'submitted' },
+      { title: 'Engineering monitors', supplier: 'Dell Technologies', amountCents: 284000, category: 'Equipment', justification: 'Four monitors for the incoming engineering team.', supplierVerified: true, status: 'submitted' },
+      { title: 'Customer research study', supplier: 'Fieldwork Studio', amountCents: 1250000, category: 'Services', justification: 'Recruitment and interviews for the next product discovery cycle.', supplierVerified: true, status: 'submitted' },
+      { title: 'Office supplies · September', supplier: 'Staples', amountCents: 34800, category: 'Office', justification: 'Monthly stationery and shared office essentials.', supplierVerified: true, status: 'draft' },
+      { title: 'Security assessment', supplier: 'Northstar Security', amountCents: 680000, category: 'Services', justification: 'Independent review of the customer-facing application.', supplierVerified: false, status: 'submitted' },
+      { title: 'Team documentation workspace', supplier: 'Notion', amountCents: 192000, category: 'Software', justification: 'Renewal of the internal documentation workspace.', supplierVerified: true, status: 'approved' },
+    ]
+    for (const [index, data] of seedRecords.entries()) {
+      await tx.businessRecord.create({ data: { workspaceId, capability: 'procurement', entity: 'purchase_request', data: json({ ...data, decisionNote: '' }), createdAt: new Date(Date.now() - (seedRecords.length - index) * 3600000) } })
+    }
+  }
+
+  private async installPurchasingDemo(tx: Tx, workspaceId: string, userId: string) {
+    const exists = await tx.project.findUnique({ where: { workspaceId_slug: { workspaceId, slug: DEMO_PURCHASING_SLUG } } })
+    if (exists) return { slug: DEMO_PURCHASING_SLUG, installed: false }
+    const app = purchasingDemoApplication()
+    const entities = namespaceApplication(app, DEMO_PURCHASING_SLUG)
+    await tx.project.create({
+      data: {
+        workspaceId,
+        slug: DEMO_PURCHASING_SLUG,
+        name: app.name,
+        description: app.description,
+        definition: json(app),
+        assembly: json(purchasingDemoAssembly()),
+        shell: 'workbench',
+        packages: json(entities.map(entity => entity.slug)),
+        versions: { create: { version: 1, definition: json(app), migration: { kind: 'demo' }, publishedBy: userId } },
+      },
+    })
+    for (const entity of entities) {
+      await tx.capability.create({ data: { workspaceId, slug: entity.slug, definition: json(entity), versions: { create: { version: 1, definition: json(entity), publishedBy: userId } } } })
+    }
+    const suppliers = entities.find(entity => entity.slug.endsWith('__suppliers'))
+    const requests = entities.find(entity => entity.slug.endsWith('__requests'))
+    if (!suppliers || !requests) throw new KernelError('INTERNAL_ERROR', 'The purchasing demo could not be installed.', 500)
+    const supplierIds = new Map<string, string>()
+    for (const [index, data] of purchasingDemoSuppliers.entries()) {
+      const record = await tx.businessRecord.create({
+        data: {
+          workspaceId,
+          capability: suppliers.slug,
+          entity: suppliers.entity.name,
+          data: json(data),
+          createdAt: new Date(Date.now() - (purchasingDemoSuppliers.length - index) * 3600000),
+        },
+      })
+      supplierIds.set(String(data.title), record.id)
+    }
+    for (const request of purchasingDemoRequests) {
+      const supplier = supplierIds.get(request.supplier)
+      if (!supplier) throw new KernelError('INTERNAL_ERROR', 'The purchasing demo could not be installed.', 500)
+      await tx.businessRecord.create({
+        data: {
+          workspaceId,
+          capability: requests.slug,
+          entity: requests.entity.name,
+          data: json({ ...request.data, supplier }),
+          createdAt: new Date(Date.now() - request.hoursAgo * 3600000),
+        },
+      })
+    }
+    return { slug: DEMO_PURCHASING_SLUG, installed: true }
   }
 
   async ensureWorkspace(user: { id: string; name: string }, examples = false) {
@@ -92,17 +179,7 @@ export class Kernel {
         const workspace = await tx.workspace.create({ data: { name: `${user.name.split(' ')[0]}'s workspace` } })
         const member = await tx.membership.create({ data: { userId: user.id, workspaceId: workspace.id, role: 'owner' } })
         if (examples) await this.bootstrap(tx, workspace.id, user.id, workspace.name)
-        const seedRecords = [
-          { title: 'Design team software licenses', supplier: 'Figma', amountCents: 432000, category: 'Software', justification: 'Annual seats for the six-person product design team.', supplierVerified: true, status: 'submitted' },
-          { title: 'Engineering monitors', supplier: 'Dell Technologies', amountCents: 284000, category: 'Equipment', justification: 'Four monitors for the incoming engineering team.', supplierVerified: true, status: 'submitted' },
-          { title: 'Customer research study', supplier: 'Fieldwork Studio', amountCents: 1250000, category: 'Services', justification: 'Recruitment and interviews for the next product discovery cycle.', supplierVerified: true, status: 'submitted' },
-          { title: 'Office supplies · September', supplier: 'Staples', amountCents: 34800, category: 'Office', justification: 'Monthly stationery and shared office essentials.', supplierVerified: true, status: 'draft' },
-          { title: 'Security assessment', supplier: 'Northstar Security', amountCents: 680000, category: 'Services', justification: 'Independent review of the customer-facing application.', supplierVerified: false, status: 'submitted' },
-          { title: 'Team documentation workspace', supplier: 'Notion', amountCents: 192000, category: 'Software', justification: 'Renewal of the internal documentation workspace.', supplierVerified: true, status: 'approved' },
-        ]
-        for (const [index, data] of (await tx.capability.count({ where: { workspaceId: workspace.id } }) ? seedRecords : []).entries()) {
-          await tx.businessRecord.create({ data: { workspaceId: workspace.id, capability: 'procurement', entity: 'purchase_request', data: { ...data, decisionNote: '' }, createdAt: new Date(Date.now() - (seedRecords.length - index) * 3600000) } })
-        }
+        else await this.installPurchasingDemo(tx, workspace.id, user.id)
         await this.event(tx, { userId: user.id, name: user.name, workspaceId: workspace.id, role: 'owner', kind: 'human' }, 'workspace.create', 'applied', { message: 'Private workspace created.' })
         return member
       })
@@ -139,6 +216,38 @@ export class Kernel {
       await tx.membership.create({ data: { workspaceId: workspace.id, userId: p.userId, role: 'owner' } })
       await this.event(tx, { ...p, workspaceId: workspace.id, role: 'owner' }, 'workspace.create', 'applied', { message: 'Private workspace created.' })
       return { id: workspace.id, name: workspace.name }
+    })
+  }
+
+  async installPurchasingDemoProject(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p)
+      if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only an owner can install the purchasing demo.', 403)
+      const result = await this.installPurchasingDemo(tx, p.workspaceId, p.userId)
+      if (result.installed) await this.event(tx, p, 'project.demo_install', 'applied', { projectSlug: result.slug })
+      return result
+    })
+  }
+
+  async removePurchasingDemoProject(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p)
+      if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only an owner can remove the purchasing demo.', 403)
+      const project = await tx.project.findUnique({ where: { workspaceId_slug: { workspaceId: p.workspaceId, slug: DEMO_PURCHASING_SLUG } } })
+      if (!project) throw new KernelError('NOT_FOUND', 'The purchasing demo is not in this workspace.', 404)
+      const packages = asStringList(project.packages)
+      const drafts = await tx.projectDraft.findMany({ where: { workspaceId: p.workspaceId, projectSlug: DEMO_PURCHASING_SLUG }, select: { id: true } })
+      if (drafts.length) await tx.builderPlan.deleteMany({ where: { workspaceId: p.workspaceId, draftId: { in: drafts.map(draft => draft.id) } } })
+      await tx.projectDraft.deleteMany({ where: { workspaceId: p.workspaceId, projectSlug: DEMO_PURCHASING_SLUG } })
+      await tx.agentCredential.deleteMany({ where: { workspaceId: p.workspaceId, projectSlug: DEMO_PURCHASING_SLUG } })
+      if (packages.length) {
+        await tx.changeSet.deleteMany({ where: { workspaceId: p.workspaceId, capability: { in: packages } } })
+        await tx.businessRecord.deleteMany({ where: { workspaceId: p.workspaceId, capability: { in: packages } } })
+        await tx.capability.deleteMany({ where: { workspaceId: p.workspaceId, slug: { in: packages } } })
+      }
+      await tx.project.delete({ where: { id: project.id } })
+      await this.event(tx, p, 'project.demo_remove', 'applied', { projectSlug: DEMO_PURCHASING_SLUG })
+      return { removed: true }
     })
   }
 
@@ -302,14 +411,17 @@ export class Kernel {
       const executions = slugs ? allExecutions.filter(event => {
         if ((event.details as Record<string, unknown>).projectSlug === current?.slug) return true
         if (event.recordId) return recordIds.has(event.recordId)
-        if (event.action === 'capability.publish') return slugs.has(procurement.slug)
+        if (event.action === 'capability.publish') {
+          const capability = (event.details as Record<string, unknown>).capability
+          return typeof capability === 'string' && slugs.has(capability)
+        }
         return slugs.has(event.action.split('.')[0] ?? '')
       }) : allExecutions
       const installed = current ? catalogFor(current.packages) : catalog
       const tools = capabilities.flatMap(cap => toolContracts(cap.definition))
       const capability = (current
         ? capabilities.find(cap => cap.slug === current.packages[0])
-        : capabilities.find(cap => cap.slug === procurement.slug)) ?? capabilities[0]
+        : capabilities[0])
       return { workspace, project: current, projects, capability, capabilities, records, changes, executions, tools, catalog: installed, principal: p }
     })
   }
@@ -372,7 +484,7 @@ export class Kernel {
   }
 
   async finishPlan(p: Principal, id: string, version: number, raw: unknown, jobLease?: { id: string; token: string }) {
-    const definition = validateApplication(raw)
+    const save = this.compileSave(raw && typeof raw === 'object' && raw !== null && 'modules' in raw && !('entities' in raw) ? { assembly: raw } : { definition: raw })
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       if (p.role !== 'owner' || p.kind !== 'human') throw new KernelError('FORBIDDEN', 'Only owners can build applications.', 403)
@@ -381,12 +493,13 @@ export class Kernel {
       if (jobLease && !await tx.buildJob.findFirst({ where: { id: jobLease.id, workspaceId: p.workspaceId, planId: id, planVersion: version, status: 'running', leaseToken: jobLease.token, leaseUntil: { gt: new Date() } } })) throw new KernelError('BUILD_LEASE_LOST', 'Another worker resumed this build. This late result was discarded.', 409)
       const content = planningContentSchema.parse(plan.content)
       const brief = planBrief(content.proposal!.plan)
+      const payload = { brief, definition: json(save.definition), assembly: save.assembly ? json(save.assembly) : Prisma.DbNull, source: 'model' as const, preview: Prisma.DbNull }
       let draft
       if (plan.draftId) {
-        const changed = await tx.projectDraft.updateMany({ where: { id: plan.draftId, workspaceId: p.workspaceId, status: 'draft', version: plan.draftVersion ?? -1 }, data: { definition: json(definition), brief, source: 'model', preview: Prisma.DbNull, version: { increment: 1 } } })
+        const changed = await tx.projectDraft.updateMany({ where: { id: plan.draftId, workspaceId: p.workspaceId, status: 'draft', version: plan.draftVersion ?? -1 }, data: { ...payload, version: { increment: 1 } } })
         if (changed.count !== 1) throw new KernelError('STALE_DRAFT', 'The saved preview changed. Reopen it before building.', 409)
         draft = await tx.projectDraft.findUniqueOrThrow({ where: { id: plan.draftId } })
-      } else draft = await tx.projectDraft.create({ data: { workspaceId: p.workspaceId, brief, definition: json(definition), source: 'model', createdBy: p.userId } })
+      } else draft = await tx.projectDraft.create({ data: { workspaceId: p.workspaceId, ...payload, createdBy: p.userId } })
       await tx.builderPlan.update({ where: { id }, data: { status: 'generated', draftId: draft.id, draftVersion: draft.version, version: { increment: 1 } } })
       if (jobLease) {
         const job = await tx.buildJob.findUniqueOrThrow({ where: { id: jobLease.id } })
@@ -394,43 +507,71 @@ export class Kernel {
         await tx.buildJob.update({ where: { id: jobLease.id }, data: { status: 'completed', draftId: draft.id, leaseToken: null, leaseUntil: null, revision: { increment: 1 }, events: json([...events, { id: events.length + 1, task: 'assemble', message: 'Your application is ready to try. Nothing has been published.', at: new Date().toISOString() }]) } })
       }
       await this.event(tx, { ...p, kind: 'agent' }, 'project.draft', 'staged', { draftId: draft.id, planId: id, planVersion: version })
-      return { ...draft, definition }
+      return this.readDraft(draft)
+    })
+  }
+
+  async listModules(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can list catalog modules.')
+      return catalogSnapshot()
+    })
+  }
+
+  async listBlocks(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can list catalog blocks.')
+      return blockCatalog()
+    })
+  }
+
+  async listApplications(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can list applications.')
+      return sortProjects(await tx.project.findMany({ where: { workspaceId: p.workspaceId } })).map(row => {
+        const project = toProjectSnapshot(row)
+        return { slug: project.slug, name: project.name, version: project.version, editable: project.editable, demo: project.demo }
+      })
     })
   }
 
   async listDrafts(p: Principal) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p)
-      if (p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only owners can build projects.', 403)
-      return (await tx.projectDraft.findMany({ where: { workspaceId: p.workspaceId, status: 'draft' }, orderBy: { updatedAt: 'desc' } })).map(draft => ({ ...draft, definition: validateApplication(draft.definition) }))
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p)
+      return (await tx.projectDraft.findMany({ where: { workspaceId: p.workspaceId, status: 'draft' }, orderBy: { updatedAt: 'desc' } })).map(draft => this.readDraft(draft))
     })
   }
 
   async getDraft(p: Principal, id: string) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p)
-      if (p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only owners can build projects.', 403)
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p)
       const draft = await tx.projectDraft.findFirst({ where: { id, workspaceId: p.workspaceId } })
       if (!draft) throw new KernelError('NOT_FOUND', 'Draft not found.', 404)
-      return { ...draft, definition: validateApplication(draft.definition) }
+      return this.readDraft(draft)
     })
   }
 
-  async saveDraft(p: Principal, command: { brief: string; definition: unknown; source: string; id?: string; expectedVersion?: number }) {
-    const definition = validateApplication(command.definition)
+  async saveDraft(p: Principal, command: { brief: string; source: string; definition?: unknown; assembly?: unknown; id?: string; expectedVersion?: number }) {
+    const { definition, assembly } = this.compileSave(command)
     if (command.brief.length > 4000) throw new KernelError('INVALID_INPUT', 'Keep the description under 4,000 characters.')
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p)
-      if (p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only owners can build projects.', 403)
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p)
+      const payload = { brief: command.brief, definition: json(definition), assembly: assembly ? json(assembly) : Prisma.DbNull, source: command.source, preview: Prisma.DbNull }
       if (command.id) {
-        const changed = await tx.projectDraft.updateMany({ where: { id: command.id, workspaceId: p.workspaceId, status: 'draft', version: command.expectedVersion ?? -1 }, data: { brief: command.brief, definition: json(definition), source: command.source, preview: Prisma.DbNull, version: { increment: 1 } } })
+        const changed = await tx.projectDraft.updateMany({ where: { id: command.id, workspaceId: p.workspaceId, status: 'draft', version: command.expectedVersion ?? -1 }, data: { ...payload, version: { increment: 1 } } })
         if (changed.count !== 1) throw new KernelError('STALE_DRAFT', 'This draft changed. Reopen it before saving.', 409)
       }
       const draft = command.id
         ? await tx.projectDraft.findUniqueOrThrow({ where: { id: command.id } })
-        : await tx.projectDraft.create({ data: { workspaceId: p.workspaceId, brief: command.brief, definition: json(definition), source: command.source, createdBy: p.userId } })
+        : await tx.projectDraft.create({ data: { workspaceId: p.workspaceId, ...payload, createdBy: p.userId } })
       await this.event(tx, p, 'project.draft', 'staged', { draftId: draft.id, version: draft.version, source: command.source })
-      return { ...draft, definition: validateApplication(draft.definition) }
+      return this.readDraft(draft)
     })
   }
 
@@ -453,21 +594,21 @@ export class Kernel {
 
   async editProject(p: Principal, slug: string) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p)
-      if (p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only owners can change applications.', 403)
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can change applications.')
       const { project, app } = await this.applicationState(tx, p, slug)
       const existing = await tx.projectDraft.findFirst({ where: { workspaceId: p.workspaceId, projectSlug: slug, baseProjectVersion: project.version, status: 'draft' }, orderBy: { updatedAt: 'desc' } })
-      if (existing) return { ...existing, definition: validateApplication(existing.definition) }
-      const draft = await tx.projectDraft.create({ data: { workspaceId: p.workspaceId, brief: `Revise ${project.name}.`, definition: json(app), source: 'manual', createdBy: p.userId, projectSlug: slug, baseProjectVersion: project.version } })
+      if (existing) return this.readDraft(existing)
+      const draft = await tx.projectDraft.create({ data: { workspaceId: p.workspaceId, brief: `Revise ${project.name}.`, definition: json(app), assembly: project.assembly == null ? Prisma.DbNull : json(project.assembly), source: 'manual', createdBy: p.userId, projectSlug: slug, baseProjectVersion: project.version } })
       await this.event(tx, p, 'project.draft', 'staged', { projectSlug: slug, draftId: draft.id, baseProjectVersion: project.version })
-      return { ...draft, definition: validateApplication(draft.definition) }
+      return this.readDraft(draft)
     })
   }
 
   async projectHistory(p: Principal, slug: string) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p)
-      if (p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only owners can inspect application versions.', 403)
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can inspect application versions.')
       const project = await tx.project.findUnique({ where: { workspaceId_slug: { workspaceId: p.workspaceId, slug } } })
       if (!project) throw new KernelError('NOT_FOUND', 'Project not found.', 404)
       return tx.projectVersion.findMany({ where: { projectId: project.id }, orderBy: { version: 'desc' } })
@@ -476,8 +617,8 @@ export class Kernel {
 
   async previewMigration(p: Principal, id: string, expectedVersion: number): Promise<MigrationPreview> {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p)
-      if (p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only owners can preview application changes.', 403)
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can preview application changes.')
       const draft = await tx.projectDraft.findFirst({ where: { id, workspaceId: p.workspaceId } })
       if (!draft) throw new KernelError('NOT_FOUND', 'Draft not found.', 404)
       if (draft.status !== 'draft' || draft.version !== expectedVersion || !draft.projectSlug || !draft.baseProjectVersion) throw new KernelError('STALE_DRAFT', 'Open the current application draft before previewing changes.', 409)
@@ -493,8 +634,8 @@ export class Kernel {
 
   async publishDraft(p: Principal, id: string, expectedVersion: number, previewToken?: string) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p)
-      if (p.role !== 'owner' || p.kind !== 'human') throw new KernelError('FORBIDDEN', 'Only an owner can publish a project.', 403)
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only an owner can publish a project.')
       const draft = await tx.projectDraft.findFirst({ where: { id, workspaceId: p.workspaceId } })
       if (!draft) throw new KernelError('NOT_FOUND', 'Draft not found.', 404)
       const plan = await tx.builderPlan.findUnique({ where: { draftId: id } })
@@ -513,7 +654,7 @@ export class Kernel {
         const plan = planMigration(state.app, app, slug, state.records, state.pending)
         if (!plan.report.canPublish) throw new KernelError('MIGRATION_BLOCKED', 'Resolve the issues in the migration preview before publishing.', 409)
         const version = state.project.version + 1
-        const changedProject = await tx.project.updateMany({ where: { id: state.project.id, version: state.project.version }, data: { name: app.name, description: app.description, definition: json(app), packages: json(entities.map(e => e.slug)), version } })
+        const changedProject = await tx.project.updateMany({ where: { id: state.project.id, version: state.project.version }, data: { name: app.name, description: app.description, definition: json(app), assembly: draft.assembly == null ? Prisma.DbNull : json(draft.assembly), packages: json(entities.map(e => e.slug)), version } })
         if (changedProject.count !== 1) throw new KernelError('STALE_PROJECT', 'The application changed during publication.', 409)
         for (const entity of entities) {
           const existing = state.capabilities.find(c => c.slug === entity.slug)
@@ -537,7 +678,7 @@ export class Kernel {
       }
       const changed = await tx.projectDraft.updateMany({ where: { id, workspaceId: p.workspaceId, status: 'draft', version: expectedVersion }, data: { status: 'published', projectSlug: slug, publishedVersion: expectedVersion } })
       if (changed.count !== 1) throw new KernelError('STALE_DRAFT', 'This draft changed during publication.', 409)
-      await tx.project.create({ data: { workspaceId: p.workspaceId, slug, name: app.name, description: app.description, definition: json(app), shell: 'workbench', packages: json(entities.map(e => e.slug)), versions: { create: { version: 1, definition: json(app), migration: { kind: 'initial' }, publishedBy: p.userId } } } })
+      await tx.project.create({ data: { workspaceId: p.workspaceId, slug, name: app.name, description: app.description, definition: json(app), assembly: draft.assembly == null ? Prisma.DbNull : json(draft.assembly), shell: 'workbench', packages: json(entities.map(e => e.slug)), versions: { create: { version: 1, definition: json(app), migration: { kind: 'initial' }, publishedBy: p.userId } } } })
       for (const entity of entities) {
         await tx.capability.create({ data: { workspaceId: p.workspaceId, slug: entity.slug, definition: json(entity), versions: { create: { version: 1, definition: json(entity), publishedBy: p.userId } } } })
       }
@@ -564,7 +705,7 @@ export class Kernel {
     }
   }
 
-  async createRecord(p: Principal, raw: unknown, slug = 'procurement') {
+  async createRecord(p: Principal, raw: unknown, slug: string) {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       if (!['owner', 'operator'].includes(p.role)) throw new KernelError('FORBIDDEN', 'Your role cannot create records.', 403)
@@ -579,7 +720,7 @@ export class Kernel {
 
   async agentProposal(p: Principal, id: string) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p, true)
+      await this.authorize(tx, p, 'operate')
       if (!p.agentCredentialId) throw new KernelError('FORBIDDEN', 'Agent credential required.', 403)
       const change = await tx.changeSet.findFirst({ where: { id, workspaceId: p.workspaceId, agentCredentialId: p.agentCredentialId } })
       if (!change) throw new KernelError('NOT_FOUND', 'Proposal not found.', 404)
@@ -589,9 +730,10 @@ export class Kernel {
 
   async agentSnapshot(p: Principal, cursor?: string) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p, true)
+      await this.authorize(tx, p, 'operate')
       if (!p.agentCredentialId) throw new KernelError('FORBIDDEN', 'Agent credential required.', 403)
       const access = await resolveAgent(tx, p.agentCredentialId)
+      if (!access.project) throw new KernelError('FORBIDDEN', 'This credential creates applications over MCP; it cannot read records.', 403)
       const packages = toProjectSnapshot(access.project).packages
       const caps = await tx.capability.findMany({ where: { workspaceId: p.workspaceId, slug: { in: packages } }, orderBy: { slug: 'asc' } })
       const capabilities = caps.map(cap => {
@@ -614,7 +756,7 @@ export class Kernel {
 
   async stage(p: Principal, command: { recordId: string; action: string; input: unknown; idempotencyKey: string; capability?: string }) {
     return this.db.$transaction(async tx => {
-      await this.authorize(tx, p, true)
+      await this.authorize(tx, p, 'operate')
       const record = await tx.businessRecord.findFirst({ where: { id: command.recordId, workspaceId: p.workspaceId } })
       if (!record) throw new KernelError('NOT_FOUND', 'Record not found.', 404)
       if (command.capability && record.capability !== command.capability) throw new KernelError('AGENT_SCOPE', 'This record does not belong to the selected action’s entity.', 403)
@@ -673,17 +815,20 @@ export class Kernel {
     })
   }
 
-  async updatePolicies(p: Principal, expectedVersion: number, settings: { approvalLimitCents: number; requireVerifiedSupplier: boolean }) {
+  async publishSettings(p: Principal, command: { capability: string; expectedVersion: number; settings: unknown }) {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
-      if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only the workspace owner can publish policies.', 403)
-      if (!Number.isSafeInteger(settings.approvalLimitCents) || settings.approvalLimitCents < 1 || settings.approvalLimitCents > 100000000 || typeof settings.requireVerifiedSupplier !== 'boolean') throw new KernelError('INVALID_SETTINGS', 'Invalid procurement policy settings.')
-      const cap = await this.capability(tx, p.workspaceId, 'procurement')
-      const definition = definitionSchema.parse({ ...cap.definition, settings: { ...cap.definition.settings, ...settings } })
-      const changed = await tx.capability.updateMany({ where: { id: cap.id, workspaceId: p.workspaceId, version: expectedVersion }, data: { definition: json(definition), version: { increment: 1 } } })
+      if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only the workspace owner can publish settings.', 403)
+      const cap = await this.capability(tx, p.workspaceId, command.capability)
+      const managed = (await tx.project.findMany({ where: { workspaceId: p.workspaceId } })).find(project => project.definition && asStringList(project.packages).includes(cap.slug))
+      if (managed) throw new KernelError('MANAGED_DEFINITION', 'Change this application through a reviewed draft. Settings are part of the published definition.', 409)
+      let definition
+      try { definition = applySettings(cap.definition, command.settings) }
+      catch (error) { throw new KernelError('INVALID_SETTINGS', error instanceof Error ? error.message : 'Invalid settings.') }
+      const changed = await tx.capability.updateMany({ where: { id: cap.id, workspaceId: p.workspaceId, version: command.expectedVersion }, data: { definition: json(definition), version: { increment: 1 } } })
       if (changed.count !== 1) throw new KernelError('STALE_DEFINITION', 'A newer capability version exists. Refresh before publishing.', 409)
       await tx.capabilityVersion.create({ data: { capabilityId: cap.id, version: cap.version + 1, definition: json(definition), publishedBy: p.userId } })
-      await this.event(tx, p, 'capability.publish', 'applied', { fromVersion: cap.version, toVersion: cap.version + 1, before: cap.definition.settings, after: definition.settings })
+      await this.event(tx, p, 'capability.publish', 'applied', { capability: cap.slug, fromVersion: cap.version, toVersion: cap.version + 1, before: cap.definition.settings, after: definition.settings })
       return { version: cap.version + 1, definition }
     })
   }

@@ -36,7 +36,7 @@ Transport tests cover the default endpoint and legacy key, custom path prefixes/
 
 Kernel can unwrap one complete Markdown JSON code block returned by a compatible provider. It does not extract JSON from surrounding prose, accept malformed JSON, or bypass semantic validation. Clarification prompts request concise actual answers rather than the schema and allow one repair attempt for schema-invalid answers. Persistent failures leave the draft unchanged.
 
-Run `pnpm accept:model` for an explicitly opt-in live check. This makes billable calls to the configured provider with synthetic briefs and records only. It ignores DATABASE_URL and creates/deletes its own temporary SQLite database. It exercises clarification, generation, publication, a reviewed operational action and an additive revision. The report is written to the OS temporary directory as kernel-model-acceptance.json; output is separate from the mocked default test suite. Optional `--diagnostics` prints validation errors for synthetic model responses. A failed run is not acceptance, even when the connection succeeds.
+Run `pnpm accept:model` for an explicitly opt-in live check. This makes billable calls to the configured provider with synthetic briefs and records only. It ignores DATABASE_URL and creates/deletes its own temporary Postgres database. It exercises clarification, generation, publication, a reviewed operational action and an additive revision. The report is written to the OS temporary directory as kernel-model-acceptance.json; output is separate from the mocked default test suite. Optional `--diagnostics` prints validation errors for synthetic model responses. A failed run is not acceptance, even when the connection succeeds.
 
 ### Request deadline
 

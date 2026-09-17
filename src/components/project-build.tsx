@@ -1,8 +1,9 @@
 import { AgentAccessPanel } from './agent-access'
 import { ApplicationStudio } from './application-studio'
 import type { Draft } from '@/kernel/application'
+import type { Definition } from '@/kernel/definition'
 import type { MigrationReport } from '@/kernel/migration'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link, Navigate } from '@tanstack/react-router'
 import { Toaster } from 'sonner'
 import { LoadingShell, ProjectFrame } from '@/components/project-frame'
@@ -16,22 +17,62 @@ import { date, money, request, shortId, type ActionResult } from '@/lib/client'
 import { capabilityOf, chooseSimulation, idempotencyKey, statusVariant } from '@/lib/project-ui'
 import { useProject } from '@/lib/use-project'
 
+function settingLabel(key: string) {
+  const base = key.endsWith('Cents') ? key.slice(0, -5) : key
+  const words = base.replace(/([a-z])([A-Z])/g, '$1 $2')
+  const label = words.charAt(0).toUpperCase() + words.slice(1)
+  return key.endsWith('Cents') ? `${label} (USD)` : label
+}
+
+function displaySettings(settings: Definition['settings']) {
+  return Object.fromEntries(Object.entries(settings).map(([key, value]) => [key, key.endsWith('Cents') && typeof value === 'number' ? value / 100 : value]))
+}
+
+function storedSettings(draft: Record<string, string | number | boolean>, published: Definition['settings']) {
+  return Object.fromEntries(Object.entries(published).map(([key, current]) => {
+    const value = draft[key]
+    if (typeof current === 'boolean') return [key, Boolean(value)]
+    if (typeof current === 'number') return [key, Math.round(Number(key.endsWith('Cents') ? Number(value) * 100 : value))]
+    return [key, String(value ?? '')]
+  }))
+}
+
+export function CapabilitySettings({ capability, busy, onPublish }: { capability: { slug: string; version: number; definition: Definition }; busy: boolean; onPublish: (settings: Record<string, string | number | boolean>) => Promise<void> }) {
+  const [draft, setDraft] = useState(() => displaySettings(capability.definition.settings))
+  const entries = Object.entries(draft)
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Settings</CardTitle>
+        <CardDescription>Publishing creates a new definition version. Existing proposals cannot silently adopt it.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <FieldGroup>
+          {entries.map(([key, value]) => typeof value === 'boolean' ? (
+            <Switch key={key} label={settingLabel(key)} checked={value} onChange={checked => setDraft(current => ({ ...current, [key]: checked }))} />
+          ) : (
+            <Field key={key} type={typeof capability.definition.settings[key] === 'number' ? 'number' : 'text'} value={String(value)} isDisabled={busy} onChange={next => setDraft(current => ({ ...current, [key]: typeof capability.definition.settings[key] === 'number' ? Number(next) : next }))}>
+              <FieldLabel>{settingLabel(key)}</FieldLabel>
+              <Input step={key.endsWith('Cents') ? '0.01' : typeof capability.definition.settings[key] === 'number' ? '1' : undefined} />
+            </Field>
+          ))}
+        </FieldGroup>
+      </CardContent>
+      <CardFooter>
+        <Button disabled={busy} onPress={() => onPublish(storedSettings(draft, capability.definition.settings))}>{busy ? <Spinner data-icon="inline-start" /> : null}Publish version {capability.version + 1}</Button>
+      </CardFooter>
+    </Card>
+  )
+}
+
 export function ProjectBuild({ projectSlug }: { projectSlug: string }) {
   const { session, snapshot, error, busy, run, refresh, keys } = useProject(projectSlug)
   const [packageSlug, setPackageSlug] = useState<string>()
   const [editing, setEditing] = useState<{ draft: Draft; model: { configured: boolean; model: string | null } }>()
   const [history, setHistory] = useState<{ version: number; createdAt: string; migration: Partial<MigrationReport> }[]>()
   const [tab, setTab] = useState('policies')
-  const [limitDollars, setLimitDollars] = useState('')
-  const [requireVerified, setRequireVerified] = useState(true)
   const activeSlug = packageSlug ?? snapshot?.capabilities[0]?.slug
-  const procurementCap = snapshot ? capabilityOf(snapshot, 'procurement') : undefined
-
-  useEffect(() => {
-    if (!procurementCap) return
-    setLimitDollars(String(Number(procurementCap.definition.settings.approvalLimitCents) / 100))
-    setRequireVerified(Boolean(procurementCap.definition.settings.requireVerifiedSupplier))
-  }, [procurementCap?.slug, procurementCap?.version])
+  const activeCapability = snapshot && activeSlug ? capabilityOf(snapshot, activeSlug) : undefined
 
   if (session.isPending) return <LoadingShell />
   if (!session.data) return <Navigate to="/login" search={{ mode: 'login' }} />
@@ -72,40 +113,47 @@ export function ProjectBuild({ projectSlug }: { projectSlug: string }) {
                 value={tab}
                 onChange={setTab}
                 tabs={[
-                  { id: 'policies', label: snapshot.project?.editable ? 'Application' : 'Policies', panel: activeSlug === 'procurement' && procurementCap ? (
+                  { id: 'policies', label: snapshot.project?.editable ? 'Application' : 'Policies', panel: snapshot.project?.editable ? (
                     <Card>
                       <CardHeader>
-                        <CardTitle>Approval policy</CardTitle>
-                        <CardDescription>Publishing creates a new definition version. Existing proposals cannot silently adopt it.</CardDescription>
+                        <CardTitle>Application overview</CardTitle>
+                        <CardDescription>Use Change application to edit fields and policies. Preview the effect on existing records before publishing a new version.</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <FieldGroup>
-                          <Field>
-                            <FieldLabel>Approval limit (USD)</FieldLabel>
-                            <Input type="number" min={0.01} step={0.01} value={limitDollars} onChange={event => setLimitDollars(event.target.value)} />
-                          </Field>
-                          <Switch label="Require verified supplier" description="When enabled, approve is blocked unless the supplier is marked verified." checked={requireVerified} onChange={setRequireVerified} />
-                        </FieldGroup>
+                        <dl className="kv">
+                          <dt>Published version</dt>
+                          <dd>{snapshot.project.version}</dd>
+                          <dt>Entities</dt>
+                          <dd>{snapshot.capabilities.map(cap => cap.definition.entity.label).join(', ')}</dd>
+                          <dt>Agent actions</dt>
+                          <dd>Proposals require human review. Connect an external agent in Agents.</dd>
+                        </dl>
+                        <h3>Current policies</h3>
+                        {snapshot.capabilities.filter(cap => cap.definition.actions.some(action => action.policies.length)).map(cap => <div key={cap.slug}><strong>{cap.definition.name}</strong><ul>{cap.definition.actions.flatMap(action => action.policies.map(rule => <li key={`${action.name}-${rule.id}`}>{action.label}: {rule.label}{rule.setting && typeof cap.definition.settings[rule.setting] === 'number' ? ` · ${rule.field.endsWith('Cents') ? money(cap.definition.settings[rule.setting]) : cap.definition.settings[rule.setting]}` : ''}</li>))}</ul></div>)}
                       </CardContent>
-                      <CardFooter>
-                        <Button disabled={busy} onPress={() => run('Published a new capability version.', async () => {
-                          const cents = Math.round(Number(limitDollars) * 100)
-                          await request('/api/kernel', { type: 'policies', expectedVersion: procurementCap.version, approvalLimitCents: cents, requireVerifiedSupplier: requireVerified })
-                          await refresh()
-                        })}>{busy ? <Spinner data-icon="inline-start" /> : null}Publish version {procurementCap.version + 1}</Button>
-                      </CardFooter>
                     </Card>
+                  ) : activeCapability && Object.keys(activeCapability.definition.settings).length ? (
+                    <CapabilitySettings
+                      key={`${activeCapability.slug}:${activeCapability.version}`}
+                      capability={activeCapability}
+                      busy={busy}
+                      onPublish={async settings => {
+                        await run('Published a new capability version.', async () => {
+                          await request('/api/kernel', { type: 'publish_settings', capability: activeCapability.slug, expectedVersion: activeCapability.version, settings })
+                          await refresh()
+                        })
+                      }}
+                    />
                   ) : (
                     <Card>
                       <CardHeader>
-                        <CardTitle>{snapshot.project?.editable ? 'Application overview' : 'No policy settings'}</CardTitle>
+                        <CardTitle>No policy settings</CardTitle>
                         <CardDescription>
-                          {snapshot.project?.editable ? 'Use Change application to edit fields and policies. Preview the effect on existing records before publishing a new version.' : packageBySlug(activeSlug ?? definition.slug)?.view === 'none'
+                          {packageBySlug(activeSlug ?? definition.slug)?.view === 'none'
                             ? 'This package has no configurable settings. Lifecycle changes are staged actions; a human apply commits them.'
                             : `Visibility is the publish action on each page or note. View: ${packageBySlug(activeSlug ?? definition.slug)?.view ?? 'none'}.`}
                         </CardDescription>
                       </CardHeader>
-                      {snapshot.project?.editable ? <CardContent><dl className="kv"><dt>Published version</dt><dd>{snapshot.project.version}</dd><dt>Entities</dt><dd>{snapshot.capabilities.map(cap => cap.definition.entity.label).join(', ')}</dd><dt>Agent actions</dt><dd>Proposals require human review. Connect an external agent in Agents.</dd></dl><h3>Current policies</h3>{snapshot.capabilities.filter(cap => cap.definition.actions.some(action => action.policies.length)).map(cap => <div key={cap.slug}><strong>{cap.definition.name}</strong><ul>{cap.definition.actions.flatMap(action => action.policies.map(rule => <li key={`${action.name}-${rule.id}`}>{action.label}: {rule.label}{rule.setting && typeof cap.definition.settings[rule.setting] === 'number' ? ` · ${rule.field.endsWith('Cents') ? money(cap.definition.settings[rule.setting]) : cap.definition.settings[rule.setting]}` : ''}</li>))}</ul></div>)}</CardContent> : null}
                     </Card>
                   ) },
                   { id: 'packages', label: 'Entities', panel: (

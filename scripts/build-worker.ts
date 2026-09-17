@@ -1,5 +1,7 @@
-import { db } from '../src/lib/db.server'
+import 'dotenv/config'
+import { openDatabase } from '../src/lib/db.server'
 import { BuildJobs } from '../src/kernel/build-jobs.server'
+const db = await openDatabase()
 const jobs = new BuildJobs(db)
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })

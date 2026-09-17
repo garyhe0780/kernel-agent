@@ -1,5 +1,7 @@
 import { definitionSchema, type Definition, type RecordData } from './definition'
 
+/** Example vertical definitions for the test catalog. Not Core. */
+
 function step(name: string, label: string, description: string, from: string, to: string) {
   return {
     name, label, description,

@@ -1,25 +1,19 @@
-import { BuildJobs, startBuildWorker } from '../kernel/build-jobs.server'
+import { BuildJobs } from '../kernel/build-jobs.server'
 import { buildJobResponse } from './build-job-stream.server'
 import { progressResponse } from './progress-stream.server'
 import type { BuildProgress } from './progress-stream'
 import { planningContentSchema } from '../kernel/builder-plan'
 import { z } from 'zod'
-import { AgentAccess, agentGrantSchema } from '../kernel/agent-access.server'
+import { agentCredentialCommandSchema } from '../kernel/agent-access.server'
 import { handleAgentCredential } from './agent-api.server'
-import { auth } from './auth.server'
-import { db } from './db.server'
-import { Kernel, KernelError } from '../kernel/engine.server'
-import { purchasingExample } from '../kernel/application'
+import { dispatchApplicationBuild, getRuntime } from './runtime.server'
+import { commandAllows, type KernelCommandName } from '../kernel/commands'
+import { KernelError } from '../kernel/engine.server'
+import { purchasingAssembly } from '../kernel/application'
 import { clarifyApplication, modelStatus, modelSettings, testModelConnection, planOperation, planApplication } from '../kernel/model.server'
+import { authUrl } from './env.server'
 import type { Principal } from '../kernel/definition'
 
-const kernel = new Kernel(db)
-const buildJobs = new BuildJobs(db)
-const workers = globalThis as unknown as { stopKernelBuildWorker?: () => void }
-// Replace the dev hot-reload loop; leases fence any old in-flight task.
-workers.stopKernelBuildWorker?.()
-workers.stopKernelBuildWorker = startBuildWorker(buildJobs)
-const agentAccess = new AgentAccess(db)
 const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('retry_build'), id: z.string().min(1) }).strict(),
   z.object({ type: z.literal('invite_member'), email: z.string().email().max(254), role: z.enum(['owner', 'operator']) }).strict(),
@@ -29,26 +23,35 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('update_member'), userId: z.string().min(1), expectedRole: z.enum(['owner', 'operator']), role: z.enum(['owner', 'operator', 'remove']) }).strict(),
   z.object({ type: z.literal('test_model_connection') }).strict(),
   z.object({ type: z.literal('create_workspace'), name: z.string().trim().min(1).max(80) }).strict(),
+  z.object({ type: z.literal('install_purchasing_demo') }).strict(),
+  z.object({ type: z.literal('remove_purchasing_demo') }).strict(),
   z.object({ type: z.literal('rename_workspace'), name: z.string().trim().min(1).max(80), expectedName: z.string() }).strict(),
   z.object({ type: z.literal('save_plan'), id: z.string().optional(), expectedVersion: z.number().int().positive().optional(), draftId: z.string().optional(), content: planningContentSchema }).strict(),
   z.object({ type: z.literal('plan_step'), id: z.string(), expectedVersion: z.number().int().positive(), step: z.enum(['propose', 'confirm', 'build', 'recover']) }).strict(),
-  agentGrantSchema.extend({ type: z.literal('create_agent_credential') }),
+  agentCredentialCommandSchema.extend({ type: z.literal('create_agent_credential') }),
   z.object({ type: z.literal('revoke_agent_credential'), id: z.string().min(1) }).strict(),
   z.object({ type: z.literal('clarify'), brief: z.string().trim().min(10).max(4000), id: z.string().optional(), expectedVersion: z.number().int().positive().optional() }).strict(),
   z.object({ type: z.literal('build'), brief: z.string().trim().min(10).max(4000), id: z.string().optional(), expectedVersion: z.number().int().positive().optional() }).strict(),
   z.object({ type: z.literal('edit_project'), project: z.string().min(1) }).strict(),
   z.object({ type: z.literal('preview_migration'), id: z.string(), expectedVersion: z.number().int().positive() }).strict(),
   z.object({ type: z.literal('example') }).strict(),
-  z.object({ type: z.literal('save_draft'), id: z.string(), expectedVersion: z.number().int().positive(), brief: z.string().max(4000), definition: z.unknown() }).strict(),
+  z.object({ type: z.literal('save_draft'), id: z.string().optional(), expectedVersion: z.number().int().positive().optional(), brief: z.string().max(4000), definition: z.unknown().optional(), assembly: z.unknown().optional() }).strict(),
   z.object({ type: z.literal('publish_draft'), id: z.string(), expectedVersion: z.number().int().positive(), previewToken: z.string().optional() }).strict(),
   z.object({ type: z.literal('operate'), project: z.string().min(1), instruction: z.string().trim().min(5).max(2000), idempotencyKey: z.string().min(8).max(100) }).strict(),
-  z.object({ type: z.literal('create'), capability: z.string().min(1).optional(), data: z.record(z.string(), z.unknown()) }).strict(),
+  z.object({ type: z.literal('create'), capability: z.string().min(1), data: z.record(z.string(), z.unknown()) }).strict(),
   z.object({ type: z.literal('stage'), recordId: z.string().min(1), action: z.string().min(1), input: z.record(z.string(), z.unknown()).default({}), idempotencyKey: z.string().min(8).max(100) }).strict(),
   z.object({ type: z.literal('review'), changeId: z.string().min(1), decision: z.enum(['apply', 'reject']) }).strict(),
-  z.object({ type: z.literal('policies'), expectedVersion: z.number().int().positive(), approvalLimitCents: z.number().int().min(1).max(100000000), requireVerifiedSupplier: z.boolean() }).strict(),
+  z.object({ type: z.literal('publish_settings'), capability: z.string().min(1), expectedVersion: z.number().int().positive(), settings: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])) }).strict(),
 ])
 
+type PostedCommand = z.infer<typeof commandSchema>['type']
+type MissingCommand = Exclude<PostedCommand, KernelCommandName>
+type ExtraCommand = Exclude<KernelCommandName, PostedCommand>
+const commandsMatchCatalog: [MissingCommand] extends [never] ? ([ExtraCommand] extends [never] ? true : ExtraCommand) : MissingCommand = true
+void commandsMatchCatalog
+
 async function principal(request: Request, kind: Principal['kind']) {
+  const { auth, kernel } = await getRuntime()
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) throw new KernelError('UNAUTHENTICATED', 'Sign in to your workspace.', 401)
   const member = await kernel.workspaceMembership(session.user, request.headers.get('x-kernel-workspace') || undefined)
@@ -57,16 +60,22 @@ async function principal(request: Request, kind: Principal['kind']) {
 
 function checkOrigin(request: Request) {
   const origin = request.headers.get('origin')
-  const allowed = new Set([process.env.BETTER_AUTH_URL || 'http://localhost:3000', 'http://localhost:3000', 'http://127.0.0.1:3000'])
-  if (!origin || !allowed.has(origin)) throw new KernelError('INVALID_ORIGIN', 'This write must originate from your local workspace.', 403)
+  const allowed = new Set([authUrl(), 'http://localhost:3000', 'http://127.0.0.1:3000'])
+  if (!origin || !allowed.has(origin)) throw new KernelError('INVALID_ORIGIN', 'This write must originate from your workspace origin.', 403)
 }
 
 function response(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } })
 }
 
+async function queuedBuild(job: Awaited<ReturnType<BuildJobs['start']>>) {
+  await dispatchApplicationBuild(job)
+  return response(job, 202)
+}
+
 export async function handleKernel(request: Request, agent = false) {
   try {
+    const { kernel, buildJobs, agentAccess } = await getRuntime()
     if (request.headers.has('authorization')) {
       if (agent) return handleAgentCredential(request, agentAccess, kernel)
       throw new KernelError('FORBIDDEN', 'Agent credentials are accepted only at /api/agent.', 403)
@@ -89,6 +98,8 @@ export async function handleKernel(request: Request, agent = false) {
       if (!agent && new URL(request.url).searchParams.has('inbox')) return response(await kernel.inbox(p))
       if (!agent && new URL(request.url).searchParams.has('agents')) return response(await agentAccess.list(p, new URL(request.url).searchParams.get('agents')!))
       if (!agent && new URL(request.url).searchParams.has('plans')) return response(await kernel.listPlans(p))
+      if (!agent && new URL(request.url).searchParams.has('modules')) return response(await kernel.listModules(p))
+      if (!agent && new URL(request.url).searchParams.has('blocks')) return response(await kernel.listBlocks(p))
       if (!agent && new URL(request.url).searchParams.has('drafts')) return response({ drafts: await kernel.listDrafts(p), model: modelStatus() })
       if (!agent && new URL(request.url).searchParams.has('history')) return response(await kernel.projectHistory(p, new URL(request.url).searchParams.get('history')!))
       const project = new URL(request.url).searchParams.get('project') ?? undefined
@@ -98,9 +109,9 @@ export async function handleKernel(request: Request, agent = false) {
     const text = await request.text()
     if (text.length > 128000) throw new KernelError('TOO_LARGE', 'Request exceeds the size limit.', 413)
     const command = commandSchema.parse(JSON.parse(text))
-    if (agent && command.type !== 'stage') throw new KernelError('FORBIDDEN', 'The agent endpoint can only stage proposals.', 403)
+    if (agent && !commandAllows(command.type, 'operate-agent')) throw new KernelError('FORBIDDEN', 'The agent endpoint can only stage proposals.', 403)
     switch (command.type) {
-      case 'retry_build': return response(await buildJobs.retry(p, command.id), 202)
+      case 'retry_build': return queuedBuild(await buildJobs.retry(p, command.id))
       case 'invite_member': return response(await kernel.inviteMember(p, command.email, command.role))
       case 'revoke_invitation': return response(await kernel.revokeInvitation(p, command.id))
       case 'preview_invitation': return response(await kernel.previewInvitation(p, command.token))
@@ -108,18 +119,20 @@ export async function handleKernel(request: Request, agent = false) {
       case 'update_member': return response(await kernel.updateMember(p, command.userId, command.expectedRole, command.role))
       case 'test_model_connection': { await kernel.workspaceSettings(p); return response(await testModelConnection()) }
       case 'create_workspace': return response(await kernel.createWorkspace(p, command.name))
+      case 'install_purchasing_demo': return response(await kernel.installPurchasingDemoProject(p))
+      case 'remove_purchasing_demo': return response(await kernel.removePurchasingDemoProject(p))
       case 'rename_workspace': return response(await kernel.renameWorkspace(p, command.name, command.expectedName))
       case 'save_plan': return response(await kernel.savePlan(p, command))
       case 'plan_step': {
-        if (command.step === 'build') return response(await buildJobs.start(p, command.id, command.expectedVersion), 202)
+        if (command.step === 'build') return queuedBuild(await buildJobs.start(p, command.id, command.expectedVersion))
         const plan = await kernel.planState(p, command.id, command.expectedVersion)
         if (command.step === 'confirm') return response(await kernel.planState(p, plan.id, plan.version, 'confirmed'))
         if (command.step === 'recover') return response(await kernel.planState(p, plan.id, plan.version, 'planning'))
         const current = plan.draftId ? await kernel.getDraft(p, plan.draftId) : undefined
         const work = async (report: (progress: BuildProgress) => void) => {
           if (command.step === 'propose') {
-            report({ stage: 'planning', message: 'Shaping your records, workflow and approval rules.' })
-            const proposal = await planApplication(plan.content, current?.definition)
+            report({ stage: 'planning', message: 'Choosing catalog modules for your confirmed plan.' })
+            const proposal = await planApplication(plan.content, current?.assembly ?? current?.definition)
             report({ stage: 'saving', message: 'Saving your plan and open decisions.' })
             return kernel.planState(p, plan.id, plan.version, 'planning', { ...plan.content, needsProposal: false, answers: {}, proposal, messages: [...plan.content.messages, { role: 'assistant', text: proposal.plan.summary }] })
           }
@@ -131,7 +144,7 @@ export async function handleKernel(request: Request, agent = false) {
       case 'revoke_agent_credential': return response(await agentAccess.revoke(p, command.id))
       case 'edit_project': return response({ draft: await kernel.editProject(p, command.project), model: modelStatus() })
       case 'preview_migration': return response(await kernel.previewMigration(p, command.id, command.expectedVersion))
-      case 'example': return response(await kernel.saveDraft(p, { brief: 'Track suppliers and purchase requests with owner review.', definition: purchasingExample(), source: 'example' }))
+      case 'example': return response(await kernel.saveDraft(p, { brief: 'Track suppliers and purchase requests with owner review.', assembly: purchasingAssembly(), source: 'example' }))
       case 'save_draft': return response(await kernel.saveDraft(p, { ...command, source: 'manual' }))
       case 'publish_draft': return response(await kernel.publishDraft(p, command.id, command.expectedVersion, command.previewToken))
       case 'clarify':
@@ -139,7 +152,7 @@ export async function handleKernel(request: Request, agent = false) {
         await kernel.listDrafts(p)
         const current = command.id ? await kernel.getDraft(p, command.id) : undefined
         if (current && (current.status !== 'draft' || current.version !== command.expectedVersion)) throw new KernelError('STALE_DRAFT', 'Reopen the current draft before revising it.', 409)
-        if (command.type === 'clarify') return response(await clarifyApplication(command.brief, current?.definition))
+        if (command.type === 'clarify') return response(await clarifyApplication(command.brief, current?.assembly ?? current?.definition))
         throw new KernelError('PLAN_REQUIRED', 'Open the application planner and confirm a plan before building.', 409)
       }
       case 'operate': {
@@ -150,10 +163,10 @@ export async function handleKernel(request: Request, agent = false) {
         const staged = await kernel.stage({ ...p, kind: 'agent' }, { recordId: result.recordId, action: result.action, input: result.input, idempotencyKey: command.idempotencyKey })
         return response({ ...staged, explanation: result.explanation })
       }
-      case 'create': return response(await kernel.createRecord(p, command.data, command.capability ?? 'procurement'))
+      case 'create': return response(await kernel.createRecord(p, command.data, command.capability))
       case 'stage': return response(await kernel.stage(p, command))
       case 'review': return response(await kernel.review(p, command.changeId, command.decision))
-      case 'policies': return response(await kernel.updatePolicies(p, command.expectedVersion, { approvalLimitCents: command.approvalLimitCents, requireVerifiedSupplier: command.requireVerifiedSupplier }))
+      case 'publish_settings': return response(await kernel.publishSettings(p, command))
     }
   } catch (error) {
     if (error instanceof KernelError) return response({ error: error.message, code: error.code }, error.status)
@@ -166,6 +179,7 @@ export async function handleKernel(request: Request, agent = false) {
 
 export async function handlePublic(workspaceId: string) {
   try {
+    const { kernel } = await getRuntime()
     return response(await kernel.publicSite(workspaceId))
   } catch (error) {
     if (error instanceof KernelError) return response({ error: error.message, code: error.code }, error.status)

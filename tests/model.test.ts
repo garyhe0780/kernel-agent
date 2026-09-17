@@ -42,28 +42,27 @@ test('model adapter preserves server credentials, ignores reasoning, and rejects
   }
 })
 
-test('builder requests application navigation and repairs invalid generated views', async () => {
+test('builder requests a catalog assembly and repairs invalid generated links', async () => {
   const { buildApplication } = await import('../src/kernel/model.server')
-  const { purchasingExample } = await import('../src/kernel/application')
+  const { purchasingAssembly, compileAssembly } = await import('../src/kernel/application')
   const oldKey = process.env.OPENAI_API_KEY, oldModel = process.env.KERNEL_MODEL
   process.env.OPENAI_API_KEY = 'test-only-key'; process.env.KERNEL_MODEL = 'test-model'
   let calls = 0
   try {
-    const app = purchasingExample()
+    const assembly = purchasingAssembly()
     const result = await buildApplication('Create purchasing with an awaiting decision view', undefined, async (_url, init) => {
       const body = JSON.parse(String(init?.body))
-      assert.match(body.instructions, /navigation/)
-      assert.match(body.instructions, /layouts/)
-      assert.match(body.instructions, /Optional when/)
-      assert.match(body.instructions, /startView/)
+      assert.match(body.instructions, /catalog/)
+      assert.match(body.instructions, /purchasing.request/)
+      assert.match(body.instructions, /sales.opportunity/)
+      assert.match(body.instructions, /never an entities document/)
       calls++
-      if (calls === 2) assert.match(JSON.parse(body.input).validationError, /starting view/)
-      return Response.json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(calls === 1 ? { ...app, startView: 'missing' } : app) }] }] })
+      if (calls === 2) assert.match(JSON.parse(body.input).validationError, /must be linked/)
+      return Response.json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(calls === 1 ? { ...assembly, links: [] } : assembly) }] }] })
     })
     assert.equal(calls, 2)
+    assert.deepEqual(result, compileAssembly(assembly))
     assert.equal(result.startView, 'awaiting_decision')
-    assert.equal(result.views.length, 2)
-    assert.equal(result.layouts[0].sections[0].name, 'Purchase')
   } finally {
     if (oldKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = oldKey
     if (oldModel === undefined) delete process.env.KERNEL_MODEL; else process.env.KERNEL_MODEL = oldModel
@@ -135,6 +134,25 @@ test('operational planner shares validated Responses transport and preserves the
   }
 })
 
+test('application planner receives catalog modules and keeps unsupported work in limitations', async () => {
+  const { planApplication } = await import('../src/kernel/model.server')
+  const oldModel = process.env.KERNEL_MODEL
+  process.env.KERNEL_MODEL = 'test-model'; process.env.KERNEL_API_KEY = 'test-only-key'
+  try {
+    const proposal = { plan: { name: 'Team sales', summary: 'Track opportunities', records: 'Opportunities and customers', workflow: 'Open then convert', rules: 'Owners review conversion', limitations: 'No invented modules.' }, questions: [] }
+    assert.deepEqual(await planApplication({ request: 'Track customers and opportunities.', messages: [], answers: {}, proposal: null }, undefined, async (_url, init) => {
+      const body = JSON.parse(String(init?.body))
+      const input = JSON.parse(body.input)
+      assert.ok(input.catalog.some((item: { id: string }) => item.id === 'sales.opportunity'))
+      assert.match(body.instructions, /Do not invent modules/)
+      return Response.json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(proposal) }] }] })
+    }), proposal)
+  } finally {
+    if (oldModel === undefined) delete process.env.KERNEL_MODEL; else process.env.KERNEL_MODEL = oldModel
+  }
+})
+
+
 test('clarification repairs schema echoes once and rejects persistently invalid output', async () => {
   const { clarifyApplication } = await import('../src/kernel/model.server')
   const oldModel = process.env.KERNEL_MODEL
@@ -149,6 +167,7 @@ test('clarification repairs schema echoes once and rejects persistently invalid 
       calls++
       if (calls === 1) return response({ type: 'object', properties: {} })
       assert.equal(JSON.parse(body.input).invalidResponse.type, 'object')
+      assert.ok(JSON.parse(body.input).catalog.some((item: { id: string }) => item.id === 'sales.opportunity'))
       assert.equal(typeof JSON.parse(body.input).validationError, 'string')
       return response(plan)
     })

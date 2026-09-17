@@ -5,9 +5,13 @@ import { Skeleton } from '@/components/ui/surfaces'
 import { authClient } from '@/lib/auth-client'
 
 export const Route = createFileRoute('/login')({
-  validateSearch: (search: Record<string, unknown>) => ({
-    mode: search.mode === 'signup' ? 'signup' as const : 'login' as const,
-  }),
+  validateSearch: (search: Record<string, unknown>): { mode: 'login' | 'signup'; code?: string } => {
+    const code = typeof search.code === 'string' && search.code.trim() ? search.code.trim() : undefined
+    return {
+      mode: search.mode === 'login' ? 'login' : search.mode === 'signup' || code ? 'signup' : 'login',
+      ...(code ? { code } : {}),
+    }
+  },
   head: ({ match }) => ({
     meta: [{ title: match.search.mode === 'signup' ? 'Create workspace — Kernel' : 'Sign in — Kernel' }],
   }),
@@ -16,7 +20,7 @@ export const Route = createFileRoute('/login')({
 
 function LoginPage() {
   const session = authClient.useSession()
-  const { mode } = Route.useSearch()
+  const { mode, code } = Route.useSearch()
 
   if (session.isPending && session.data === undefined) {
     return (
@@ -35,5 +39,5 @@ function LoginPage() {
   }
 
   if (session.data) return <Navigate to={pendingInvitation() ? "/settings" : "/"} />
-  return <AuthScreen mode={mode} />
+  return <AuthScreen mode={mode} invitationCode={code} />
 }

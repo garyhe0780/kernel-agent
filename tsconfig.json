@@ -12,7 +12,10 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": ["vite/client", "node"],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "cloudflare:workers": ["./src/lib/cloudflare-workers-stub.ts"]
+    }
   },
   "include": ["src", "tests", "scripts", "vite.config.ts"]
 }

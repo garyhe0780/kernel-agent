@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -84,6 +84,7 @@ model Project {
   description String    @default("")
   version     Int       @default(1)
   definition  Json?
+  assembly    Json?
   packages    Json
   versions    ProjectVersion[]
   createdAt   DateTime  @default(now())
@@ -97,6 +98,7 @@ model ProjectDraft {
   workspaceId   String
   brief         String
   definition    Json
+  assembly      Json?
   version       Int       @default(1)
   status        String    @default("draft")
   source        String
@@ -214,7 +216,8 @@ model Execution {
 model AgentCredential {
   id          String   @id @default(cuid())
   workspaceId String
-  projectSlug String
+  projectSlug String?
+  kind        String   @default("operate")
   name        String
   tokenHash   String   @unique
   prefix      String

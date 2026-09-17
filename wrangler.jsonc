@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kernel-workspace",
+  "compatibility_date": "2026-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "observability": {
+    "enabled": true
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "b7999ec05554454d9a2762f7f48ed73d"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "kernel-application-build",
+      "binding": "BUILD_WORKFLOW",
+      "class_name": "ApplicationBuildWorkflow"
+    }
+  ]
+}

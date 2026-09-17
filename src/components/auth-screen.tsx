@@ -10,7 +10,7 @@ import { Alert, Badge, Spinner } from './ui/surfaces'
 
 type AuthMode = 'login' | 'signup'
 
-export function AuthScreen({ mode }: { mode: AuthMode }) {
+export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invitationCode?: string }) {
   const navigate = useNavigate({ from: '/login' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -18,7 +18,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 
   function setMode(next: AuthMode) {
     setError('')
-    void navigate({ search: { mode: next } })
+    void navigate({ search: invitationCode ? { mode: next, code: invitationCode } : { mode: next } })
   }
 
   return (
@@ -63,7 +63,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           <h2>{signup ? 'Create your workspace' : 'Welcome back'}</h2>
           <p className="muted">
             {signup
-              ? 'Start with a private workspace. Describe a business application, review its preview, and publish it when it fits.'
+              ? 'Kernel is invite-only. Enter the invitation code you were given, then create a private workspace.'
               : 'Sign in to continue working with your team and agents.'}
           </p>
           <Form
@@ -78,7 +78,11 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
                   password: String(values.get('password')),
                 }
                 const result = signup
-                  ? await authClient.signUp.email({ ...credentials, name: String(values.get('name')) })
+                  ? await authClient.signUp.email({
+                      ...credentials,
+                      name: String(values.get('name')),
+                      invitationCode: String(values.get('invitationCode')),
+                    } as Parameters<typeof authClient.signUp.email>[0])
                   : await authClient.signIn.email(credentials)
                 if (result.error) throw new Error(result.error.message || 'Unable to sign in.')
                 await navigate({ to: pendingInvitation() ? '/settings' : '/' })
@@ -91,7 +95,14 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           >
             <FieldGroup>
               {signup ? (
-                <Field name="name" isRequired minLength={2} maxLength={80} autoFocus>
+                <Field name="invitationCode" isRequired minLength={4} maxLength={80} defaultValue={invitationCode} autoFocus={!invitationCode}>
+                  <FieldLabel>Invitation code</FieldLabel>
+                  <Input placeholder="Enter your invitation code" autoComplete="off" autoCapitalize="none" spellCheck="false" />
+                  <FieldDescription>Ask the person who invited you if you do not have one.</FieldDescription>
+                </Field>
+              ) : null}
+              {signup ? (
+                <Field name="name" isRequired minLength={2} maxLength={80} autoFocus={Boolean(invitationCode)}>
                   <FieldLabel>Your name</FieldLabel>
                   <Input placeholder="Alex Morgan" autoComplete="name" />
                 </Field>
@@ -114,12 +125,12 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             </FieldGroup>
           </Form>
           <div className="auth-toggle">
-            <span>{signup ? 'Already have a workspace?' : 'New to Kernel?'}</span>
+            <span>{signup ? 'Already have a workspace?' : 'Have an invitation code?'}</span>
             <Button variant="ghost" size="sm" onPress={() => setMode(signup ? 'login' : 'signup')}>
               {signup ? 'Sign in' : 'Create an account'}
             </Button>
           </div>
-          <p className="auth-note">Records stay in your local database. Connected agents send the description or selected project context to your configured model.</p>
+          <p className="auth-note">{signup ? 'Accounts are invite-only. Records stay in your workspace database. Connected agents send the description or selected project context to your configured model.' : 'Records stay in your local database. Connected agents send the description or selected project context to your configured model.'}</p>
         </div>
       </section>
     </main>

@@ -3,6 +3,9 @@ dist/
 .output/
 .tanstack/
 .env
+.data/
+.wrangler/
+.env.cloudflare
 *.db
 *.db-journal
 *.db-wal
@@ -10,3 +13,6 @@ dist/
 src/routeTree.gen.ts
 *.log
 .DS_Store
+.cursor/
+.impeccabl/
+.impeccable/

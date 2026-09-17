@@ -12,19 +12,24 @@ import { Button } from './ui/button'
 import { Field, FieldGroup, FieldLabel, Textarea } from './ui/form-field'
 import { Alert, Spinner } from './ui/surfaces'
 import { request } from '@/lib/client'
-import type { Draft } from '@/kernel/application'
+import { salesAssembly, type Draft } from '@/kernel/application'
+import { assembleSelection, selectionForModules } from '@/kernel/assembly'
+import type { CatalogSnapshot } from '@/kernel/modules'
+import { ModulePicker, type ModuleSelection } from './module-picker'
 import type { BuilderPlan, PlanningContent, BusinessPlan } from '@/kernel/builder-plan'
 
 const labels: Record<keyof BusinessPlan, string> = { name: 'Application name', summary: 'Purpose', records: 'What you track', workflow: 'How work moves', rules: 'Access and approvals', limitations: 'Limits and assumptions' }
 const empty: PlanningContent = { request: '', messages: [], answers: {}, proposal: null }
 
-export function ApplicationStudio({ draft: initial, planId, model, onSaved, onClose }: { draft?: Draft; planId?: string; model: { configured: boolean; model: string | null }; onSaved: (draft: Draft) => void; onClose: () => void }) {
+export function ApplicationStudio({ draft: initial, planId, seedModules, model, onSaved, onClose }: { draft?: Draft; planId?: string; seedModules?: string[]; model: { configured: boolean; model: string | null }; onSaved: (draft: Draft) => void; onClose: () => void }) {
   const [job, setJob] = useState<BuildJobSnapshot | null>(null)
   const [reconnecting, setReconnecting] = useState(false)
   const [plan, setPlan] = useState<BuilderPlan>()
   const planRef = useRef<BuilderPlan | undefined>(undefined)
   const [content, setContent] = useState<PlanningContent>(empty)
   const [draft, setDraft] = useState(initial)
+  const [catalog, setCatalog] = useState<CatalogSnapshot[]>([])
+  const [selection, setSelection] = useState<ModuleSelection>(() => seedModules?.length ? selectionForModules(seedModules) : { name: 'New application', description: 'Assembled from Kernel catalog modules.', modules: [] })
   const [previewState, setPreviewState] = useState({ dirty: false, busy: false })
   const [preview, setPreview] = useState(false)
   const [message, setMessage] = useState('')
@@ -37,6 +42,7 @@ export function ApplicationStudio({ draft: initial, planId, model, onSaved, onCl
   const saved = (next: BuilderPlan) => { planRef.current = next; setPlan(next); setContent(next.content); setDirty(false); setAcknowledged(false); if (next.status !== 'building') setJob(null) }
   useEffect(() => {
     let active = true
+    request<CatalogSnapshot[]>('/api/kernel?modules=1').then(modules => { if (active) setCatalog(modules) }).catch(e => { if (active) setError(e.message) })
     request<BuilderPlan[]>('/api/kernel?plans=1').then(plans => {
       if (!active) return
       const found = plans.find(p => planId ? p.id === planId : initial && p.draftId === initial.id)
@@ -122,7 +128,7 @@ export function ApplicationStudio({ draft: initial, planId, model, onSaved, onCl
   const built = preview && draft && plan?.status === 'generated'
   const canSend = !locked && model.configured && (started ? questions.length ? questions.every(q => content.answers[q.id]?.trim()) : Boolean(message.trim()) || Boolean(plan && !content.proposal) || Boolean(content.needsProposal) || Boolean(error) : content.request.trim().length >= 10)
   const conversation = <section className="studio-conversation" aria-label="Application conversation">
-    {!started ? <div className="studio-welcome"><h1>What would you like to manage?</h1><p className="muted">Describe your idea. We’ll shape it together.</p></div> : null}
+    {!started ? <div className="studio-welcome"><h1>What would you like to manage?</h1><p className="muted">Assemble catalog modules, or describe an idea and we’ll shape a plan.</p></div> : null}
     {content.messages.length ? <ol className="studio-messages" aria-label="Conversation history">{content.messages.map((m, i) => <li key={i} data-role={m.role}><strong>{m.role === 'user' ? 'You' : 'Kernel'}</strong><p>{m.text}</p></li>)}</ol> : null}
     {error ? <Alert variant="danger">{error}</Alert> : null}
     {busy ? progress.length ? <BuildProgress events={progress} /> : <p role="status"><Spinner /> {busy}</p> : null}
@@ -149,11 +155,21 @@ export function ApplicationStudio({ draft: initial, planId, model, onSaved, onCl
     {!model.configured ? <p className="muted studio-connection">Connect a model in workspace settings to chat with Kernel. You can still try the purchasing demo.</p> : null}
     {preview && previewState.dirty ? <p className="muted">Save your preview edits before requesting a change.</p> : null}
     {started || dirty ? <div className="studio-save"><span className="muted" role="status">{dirty ? 'Unsaved changes' : plan ? 'Conversation saved' : 'Draft saved'}</span>{dirty && (content.request.trim().length >= 10 || draft) ? <Button variant="ghost" disabled={locked} onPress={() => run('Saving your work…', async () => { await save({ ...content, request: content.request || `Revise ${draft!.definition.name}.`, messages: [...content.messages, ...(message.trim() ? [{ role: 'user' as const, text: message.trim() }] : [])] }); setMessage('') })}>Save for later</Button> : null}</div> : null}
-    {!started ? <div className="studio-examples"><p className="muted">Start with an idea</p><div className="studio-example-prompts">{[
+    {!started ? <div className="studio-examples">
+      {catalog.length ? <div className="studio-catalog"><p className="muted">Assemble from the catalog</p><ModulePicker catalog={catalog} value={selection} disabled={locked} onChange={setSelection} /><Button disabled={locked || !selection.modules.length} onPress={() => run('Assembling modules…', async () => {
+        const assembly = assembleSelection(selection)
+        const next = await request<Draft>('/api/kernel', { type: 'save_draft', brief: selection.description.length >= 10 ? selection.description : `${selection.name} assembled from catalog modules.`, assembly })
+        setDraft(next); onSaved(next); setDirty(false); setPreview(true)
+      })}>Assemble these modules<ArrowRight data-icon="inline-end" /></Button></div> : null}
+      <p className="muted">Or start with an idea the catalog can assemble</p><div className="studio-example-prompts">{[
       ['Purchase approvals', 'We need to track purchase requests, suppliers, and approvals before buying.'],
-      ['Customer tracking', 'We need to track customers, sales opportunities, and follow-up tasks for our team.'],
-      ['Support requests', 'We need to track support requests, assign owners, and manage their status through resolution.'],
-    ].map(([label, prompt]) => <Button key={label} variant="outline" disabled={locked} onPress={() => edit({ ...content, request: prompt })}>{label}</Button>)}</div><Button variant="link" disabled={locked} onPress={() => run('Opening purchasing demo…', async () => { const next = await request<Draft>('/api/kernel', { type: 'example' }); setDraft(next); onSaved(next); setDirty(false); setPreview(true) })}>Try purchasing demo<ArrowRight data-icon="inline-end" /></Button><p className="muted">A predefined application you can try and edit.</p></div> : null}
+      ['Customer tracking', 'We need to track customers and sales opportunities, with owner review before converting a deal.'],
+    ].map(([label, prompt]) => <Button key={label} variant="outline" disabled={locked} onPress={() => edit({ ...content, request: prompt })}>{label}</Button>)}</div>
+      <div className="studio-example-prompts">
+        <Button variant="link" disabled={locked} onPress={() => run('Opening purchasing example…', async () => { const next = await request<Draft>('/api/kernel', { type: 'example' }); setDraft(next); onSaved(next); setDirty(false); setPreview(true) })}>Try purchasing example<ArrowRight data-icon="inline-end" /></Button>
+        <Button variant="link" disabled={locked} onPress={() => run('Opening sales example…', async () => { const next = await request<Draft>('/api/kernel', { type: 'save_draft', brief: 'Track customers and sales opportunities with owner review.', assembly: salesAssembly() }); setDraft(next); onSaved(next); setDirty(false); setPreview(true) })}>Try sales example<ArrowRight data-icon="inline-end" /></Button>
+      </div>
+      <p className="muted">Predefined catalog assemblies you can try and publish.</p></div> : null}
     {!job && plan && (plan.status === 'building' || (!preview && plan.status === 'generated') || Boolean(error)) ? <div className="stack"><p className="muted">Check the saved build status to recover your work.</p><Button variant="outline" disabled={locked} onPress={() => run('Checking build status…', async () => { await syncBuild(plan.id) })}>Check build status</Button>{plan.status === 'building' ? <Button variant="outline" disabled={locked} onPress={() => run('Recovering your plan…', async () => saved(await request('/api/kernel', { type: 'plan_step', id: plan.id, expectedVersion: plan.version, step: 'recover' })))}>Recover plan</Button> : null}</div> : null}
   </section>
   return <section className={`application-studio ${preview && draft ? 'studio-preview' : started ? 'studio-started' : 'studio-intro'}`} aria-label="Application creator">

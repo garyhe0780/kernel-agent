@@ -34,8 +34,8 @@ export class BuildJobs {
       const draft = plan.draftId ? await tx.projectDraft.findFirst({ where: { id: plan.draftId, workspaceId: p.workspaceId, version: plan.draftVersion ?? -1, status: 'draft' } }) : null
       if (plan.draftId && !draft) throw new KernelError('STALE_DRAFT', 'The preview changed. Reopen the plan before building.', 409)
       await tx.builderPlan.update({ where: { id: planId }, data: { status: 'building', version: { increment: 1 } } })
-      const input: BuildInput = { brief: planBrief(content.proposal.plan), ...(draft ? { current: validateApplication(draft.definition) } : {}) }
-      return jobSnapshot(await tx.buildJob.create({ data: { workspaceId: p.workspaceId, planId, planVersion: version + 1, createdBy: p.userId, input: json(input), checkpoints: {}, events: json(event([], 'structure', 'Build queued. You can leave this page; completed work will be saved.')) } }))
+      const input: BuildInput = { brief: planBrief(content.proposal.plan), ...(draft ? { current: validateApplication(draft.definition), currentAssembly: draft.assembly == null ? undefined : draft.assembly as BuildInput['currentAssembly'] } : {}) }
+      return jobSnapshot(await tx.buildJob.create({ data: { workspaceId: p.workspaceId, planId, planVersion: version + 1, createdBy: p.userId, input: json(input), checkpoints: {}, events: json(event([], 'assembly', 'Build queued. You can leave this page; completed work will be saved.')) } }))
     })
   }
 
@@ -71,9 +71,11 @@ export class BuildJobs {
   }
 
   /** One durable task per lease. Multiple processes may poll the same database. */
-  async runOne() {
+  async runOne(jobId?: string) {
     const now = new Date(), token = randomUUID()
-    const candidate = await this.db.buildJob.findFirst({ where: { OR: [{ status: 'queued' }, { status: 'running', leaseUntil: { lt: now } }] }, orderBy: { updatedAt: 'asc' } })
+    const candidate = jobId
+      ? await this.db.buildJob.findFirst({ where: { id: jobId, OR: [{ status: 'queued' }, { status: 'running', leaseUntil: { lt: now } }] } })
+      : await this.db.buildJob.findFirst({ where: { OR: [{ status: 'queued' }, { status: 'running', leaseUntil: { lt: now } }] }, orderBy: { updatedAt: 'asc' } })
     if (!candidate) return false
     const claimed = await this.db.buildJob.updateMany({ where: { id: candidate.id, revision: candidate.revision, OR: [{ status: 'queued' }, { status: 'running', leaseUntil: { lt: now } }] }, data: { status: 'running', leaseToken: token, leaseUntil: new Date(Date.now() + this.leaseMs), revision: { increment: 1 } } })
     if (!claimed.count) return true

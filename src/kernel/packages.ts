@@ -1,5 +1,8 @@
-import { definitionSchema, procurement, type Definition, type RecordData } from './definition'
+import { definitionSchema, type Definition, type RecordData } from './definition'
+import { procurement } from './procurement'
 import { seedSuite, suite } from './suite'
+
+/** Example catalog used by tests and the public journal fixture. Not Core. */
 
 export type ViewKind = 'none' | 'hero' | 'article-list'
 

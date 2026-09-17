@@ -2,9 +2,9 @@ import { WorkspaceSwitcher } from './workspace-switcher'
 import { clearWorkspaceSelection } from '@/lib/workspace-selection'
 import { matchesView } from '@/kernel/application-views'
 import { useEffect, useState, type ReactNode, type ComponentType } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { Dialog, DialogTrigger, Popover } from 'react-aria-components'
-import { ClipboardCheck, ClipboardList, Contact, FolderKanban, Headphones, Laptop, Newspaper, Receipt, Users, LogOut, Settings2, SquareArrowOutUpRight, ChevronsUpDown, Layers3, LayoutGrid, Menu, X, Table2, Inbox, ArrowLeft, House, History, Bot, Plus, Star, Ellipsis } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, Contact, FolderKanban, Headphones, Laptop, Newspaper, Receipt, Users, LogOut, Settings2, SquareArrowOutUpRight, ChevronsUpDown, Layers3, LayoutGrid, Menu, X, Table2, Inbox, ArrowLeft, House, History, Bot, Plus, Star, Ellipsis, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/surfaces'
 import { authClient } from '@/lib/auth-client'
@@ -12,6 +12,7 @@ import type { Snapshot } from '@/lib/client'
 
 const projectIcons: Record<string, ComponentType<{ className?: string }>> = {
   site: Newspaper,
+  'demo-purchasing': Receipt,
   procurement: Receipt,
   crm: Contact,
   orders: ClipboardList,
@@ -43,7 +44,7 @@ export function ProjectFrame({
   liveHref,
   configure,
   workspace = false,
-  workspacePage = 'applications',
+  workspacePage: workspacePageProp,
   activeEntity,
   activeView,
   onViewChange,
@@ -58,7 +59,7 @@ export function ProjectFrame({
   liveHref?: string
   configure?: boolean
   workspace?: boolean
-  workspacePage?: 'overview' | 'applications' | 'inbox' | 'activity' | 'agents' | 'settings'
+  workspacePage?: 'overview' | 'applications' | 'catalog' | 'inbox' | 'activity' | 'agents' | 'settings'
   activeView?: string
   onViewChange?: (id: string) => void
   activeEntity?: string
@@ -68,6 +69,8 @@ export function ProjectFrame({
   settingsNavigation?: (closeNavigation: () => void) => ReactNode
   headerLocation?: string
 }) {
+  const pathname = useRouterState({ select: s => s.location.pathname })
+  const workspacePage = workspacePageProp ?? (pathname === '/applications' ? 'applications' : pathname === '/catalog' ? 'catalog' : pathname === '/inbox' ? 'inbox' : pathname === '/activity' ? 'activity' : pathname === '/agents' ? 'agents' : pathname === '/settings' ? 'settings' : 'overview')
   const slug = workspace ? '' : snapshot.project?.slug ?? ''
   const owner = snapshot.principal.role === 'owner'
   const [navOpen, setNavOpen] = useState(false)
@@ -98,14 +101,14 @@ export function ProjectFrame({
     <div className="app app-desk"><a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="desk-topbar">
         <div className="desk-topbar-app">
-        {workspace ? <a href="/" className="workspace-brand" aria-label="Kernel workspace"><span className="desk-app-icon"><Layers3 /></span><strong>Kernel</strong></a> : <DialogTrigger isOpen={switcherOpen} onOpenChange={setSwitcherOpen}>
+        {workspace ? <Link to="/" className="workspace-brand" aria-label="Kernel workspace" onClick={() => setNavOpen(false)}><span className="desk-app-icon"><Layers3 /></span><strong>Kernel</strong></Link> : <DialogTrigger isOpen={switcherOpen} onOpenChange={setSwitcherOpen}>
           <Button variant="ghost" className="app-switcher-trigger" aria-label={`Switch application, current application: ${name}`}>
             <span className="desk-app-icon"><Layers3 /></span><strong>{name}</strong><ChevronsUpDown />
           </Button>
           <Popover className="app-switcher-popover" placement="bottom start" offset={8} containerPadding={12}>
             <Dialog className="app-switcher-dialog" aria-label="Switch application">
               <nav className="app-switcher-list" aria-label="Applications">
-                {snapshot.projects.map(project => <Link key={project.slug} to="/p/$projectSlug" params={{ projectSlug: project.slug }} aria-current={project.slug === slug ? 'page' : undefined} onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>{project.name}</Link>)}
+                {snapshot.projects.map(project => <Link key={project.slug} to="/p/$projectSlug" params={{ projectSlug: project.slug }} aria-current={project.slug === slug ? 'page' : undefined} onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>{project.name}{project.demo ? <small>Demo</small> : null}</Link>)}
                 <Link className="app-switcher-all" aria-current={workspace ? 'page' : undefined} to="/" onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>Back to workspace</Link>
               </nav>
             </Dialog>
@@ -121,11 +124,12 @@ export function ProjectFrame({
         {!workspace ? <Link to="/" className="nav-item desk-back-link" onClick={() => setNavOpen(false)}><ArrowLeft /><span>Back to workspace</span></Link> : null}
         <nav className="nav-list" aria-label={workspace ? 'Workspace navigation' : `${name} navigation`}>
           {workspace ? <>
-            <a href="/" className="nav-item" aria-current={workspacePage === 'overview' ? 'page' : undefined}><House /><span>Overview</span></a>
-            <a href="/applications" className="nav-item" aria-current={workspacePage === 'applications' ? 'page' : undefined}><LayoutGrid /><span>Applications</span></a>
-            <a href="/inbox" className="nav-item" aria-current={workspacePage === 'inbox' ? 'page' : undefined}><Inbox /><span>Inbox</span></a>
-            <a href="/activity" className="nav-item" aria-current={workspacePage === 'activity' ? 'page' : undefined}><History /><span>Activity</span></a>
-            {owner ? <a href="/agents" className="nav-item" aria-current={workspacePage === 'agents' ? 'page' : undefined}><Bot /><span>Agents</span></a> : null}
+            <Link to="/" className="nav-item" activeOptions={{ exact: true }} aria-current={workspacePage === 'overview' ? 'page' : undefined} onClick={() => setNavOpen(false)}><House /><span>Overview</span></Link>
+            <Link to="/applications" className="nav-item" aria-current={workspacePage === 'applications' ? 'page' : undefined} onClick={() => setNavOpen(false)}><LayoutGrid /><span>Applications</span></Link>
+            <Link to="/catalog" className="nav-item" aria-current={workspacePage === 'catalog' ? 'page' : undefined} onClick={() => setNavOpen(false)}><Boxes /><span>Catalog</span></Link>
+            <Link to="/inbox" className="nav-item" aria-current={workspacePage === 'inbox' ? 'page' : undefined} onClick={() => setNavOpen(false)}><Inbox /><span>Inbox</span></Link>
+            <Link to="/activity" className="nav-item" aria-current={workspacePage === 'activity' ? 'page' : undefined} onClick={() => setNavOpen(false)}><History /><span>Activity</span></Link>
+            {owner ? <Link to="/agents" className="nav-item" aria-current={workspacePage === 'agents' ? 'page' : undefined} onClick={() => setNavOpen(false)}><Bot /><span>Agents</span></Link> : null}
             {snapshot.projects.length ? <section className="workspace-favorites" aria-label="Favorite applications"><div className="favorites-heading"><span>Favorites</span><DialogTrigger><Button variant="ghost" size="icon" aria-label="Manage favorite applications" disabled={!favoritesReady}><Plus /></Button><Popover className="app-switcher-popover favorites-popover" placement="bottom start" offset={8}><Dialog className="app-switcher-dialog" aria-label="Manage favorite applications"><h2>Favorite applications</h2><p>Keep your frequent applications close. Saved in this browser.</p><label className="favorites-search-label">Find an application<input className="input" value={favoriteSearch} onChange={event => setFavoriteSearch(event.target.value)} placeholder="Search applications…" /></label><div className="favorites-options">{snapshot.projects.filter(project => project.name.toLowerCase().includes(favoriteSearch.toLowerCase())).map(project => <label key={project.slug}><input type="checkbox" checked={favorites.includes(project.slug)} onChange={() => toggleFavorite(project.slug)} /><span>{project.name}</span></label>)}{!snapshot.projects.some(project => project.name.toLowerCase().includes(favoriteSearch.toLowerCase())) ? <p>No applications match.</p> : null}</div>{favoriteNotice ? <p role="status">{favoriteNotice}</p> : null}</Dialog></Popover></DialogTrigger></div><div className="workspace-application-links">{favoriteProjects.slice(0, 3).map(project => {
               const Icon = projectIcons[project.slug] ?? Star
               return <Link key={project.slug} to="/p/$projectSlug" params={{ projectSlug: project.slug }} className="nav-item" title={project.name} onClick={() => setNavOpen(false)}><Icon /><span>{project.name}</span></Link>
@@ -151,10 +155,10 @@ export function ProjectFrame({
         </>}
         </div>
         <div className="desk-nav-bottom">
-          {workspace && owner && !settingsNavigation ? <a href="/settings" className="nav-item" aria-current={workspacePage === 'settings' ? 'page' : undefined}><Settings2 /><span>Settings</span></a> : null}
+          {workspace && owner && !settingsNavigation ? <Link to="/settings" className="nav-item" aria-current={workspacePage === 'settings' ? 'page' : undefined} onClick={() => setNavOpen(false)}><Settings2 /><span>Settings</span></Link> : null}
           {owner && slug ? <Link to="/p/$projectSlug/build" params={{ projectSlug: slug }} className="nav-item" aria-current={configure ? 'page' : undefined}><Settings2 /><span>Configure application</span></Link> : null}
           <div className="desk-account"><span className="desk-avatar">{snapshot.principal.name.slice(0, 1).toUpperCase()}</span><div><strong>{snapshot.principal.name}</strong><span>{snapshot.principal.role}</span></div><Button variant="ghost" size="icon" aria-label="Sign out" onPress={() => { clearWorkspaceSelection(); void authClient.signOut() }}><LogOut /></Button></div>
-          <a className="desk-powered" href="/">Built with <strong>kernel.</strong></a>
+          <Link className="desk-powered" to="/" onClick={() => setNavOpen(false)}>Built with <strong>kernel.</strong></Link>
         </div>
       </aside>
       {children}

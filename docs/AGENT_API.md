@@ -1,8 +1,16 @@
 # Connect an external agent
 
-Open a published application → Configure → Agents. Enter an agent name, choose the actions it may propose, and set expiry (1–90 days). Create the credential and copy its secret once into your agent’s secret configuration. It can read every record in this application. It cannot apply proposals or publish application changes.
+Kernel issues two credential kinds. Both use Streamable HTTP at `/api/mcp` with `Authorization: Bearer <credential>`. Clients must support a configured bearer header; OAuth is not available. Use the same server origin as the workspace. Locally this preview is http://127.0.0.1:3002; use HTTPS when deploying remotely. Never place the secret in a URL, commit it, or pass a human session cookie to an external agent.
 
-Use the same server origin as the workspace. Locally this preview is http://127.0.0.1:3002; use HTTPS when deploying remotely. Never place the secret in a URL, commit it, or pass a human session cookie to an external agent.
+## Create applications (builder)
+
+From Agents, connect a builder. Name the agent, set expiry (1–90 days), and copy the one-time secret into Cursor, Claude, or another MCP client. The credential is workspace-wide. It does not select an application or operator actions. It cannot call `/api/agent`, read records, or stage operational changes.
+
+Construction tools: `list_blocks`, `list_modules`, `list_applications`, `list_drafts`, `get_draft`, `save_draft`, `edit_project`, `preview_migration`, `publish_draft`. For a new application, `list_modules` then `save_draft` with a catalog assembly, then `publish_draft` without `previewToken`. Do not invent entities or unwired blocks. To change a published application, call `edit_project`, `save_draft` with a revised assembly, `preview_migration`, then `publish_draft` with that token. Publishing does not install sample records. Kernel compiles the assembly; the favorite agent is the assembler.
+
+## Operate a published application
+
+Open a published application → Configure → Agents. Enter an agent name, choose the actions it may propose, and set expiry (1–90 days). Create the credential and copy its secret once into your agent’s secret configuration. It can read every record in this application. It cannot apply proposals or publish application changes.
 
 ## Discover and read
 
@@ -36,7 +44,7 @@ Automatic application, record-creation proposals and multi-step jobs remain futu
 
 ## Connect over MCP
 
-Kernel also serves MCP at `/api/mcp` using stateless Streamable HTTP with JSON responses. Use the same credential created in Configure → Agents. The client must support a configured bearer header; OAuth discovery, legacy SSE and stdio transport are not implemented.
+Kernel also serves MCP at `/api/mcp` using stateless Streamable HTTP with JSON responses. The credential kind selects the tool set: builder credentials expose construction tools; operate credentials expose `list_records`, `get_proposal`, and scoped `stage_*` tools. The client must support a configured bearer header; OAuth discovery, legacy SSE and stdio transport are not implemented.
 
 Configure these values in your MCP client (the exact configuration file format depends on the client):
 

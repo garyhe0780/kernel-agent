@@ -1,8 +1,11 @@
 import { z } from 'zod'
 import { recordLayoutSchema } from './application-layouts'
-import { definitionSchema, procurement, validateFields, type Field, type RecordData } from './definition'
-
+import { materializeAssembly, purchasingAssembly, salesAssembly } from './compile'
+import type { Assembly } from './assembly'
+import { definitionSchema, validateFields, type Field, type RecordData } from './definition'
 import { savedViewSchema, navigationItemSchema } from './application-views'
+
+export { purchasingAssembly, salesAssembly }
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
 const forbidden = new Set(['__proto__', 'constructor', 'prototype'])
@@ -17,7 +20,7 @@ export const applicationSchema = z.object({
   startView: z.string().nullable().default(null),
 }).strict()
 export type Application = z.infer<typeof applicationSchema>
-export type Draft = { id: string; brief: string; definition: Application; version: number; status: string; source: string; projectSlug: string | null; baseProjectVersion: number | null; updatedAt: string }
+export type Draft = { id: string; brief: string; definition: Application; assembly?: Assembly | null; version: number; status: string; source: string; projectSlug: string | null; baseProjectVersion: number | null; updatedAt: string }
 
 export function validateApplication(raw: unknown): Application {
   if (JSON.stringify(raw).length > 100000) throw new Error('Application definition is too large.')
@@ -112,29 +115,12 @@ export function validateApplication(raw: unknown): Application {
   return app
 }
 
+export function compileAssembly(raw: unknown): Application {
+  return validateApplication(materializeAssembly(raw))
+}
+
 export function purchasingExample(): Application {
-  const requests = structuredClone(procurement)
-  requests.slug = 'requests'
-  requests.entity.fields.supplier = { label: 'Supplier', type: 'string', required: true, editable: true, reference: 'suppliers' }
-  return validateApplication({
-    name: 'Team purchasing', description: 'Manage suppliers and purchase requests, with a reviewed decision for every purchase.',
-    navigation: [{ entity: 'requests', label: 'Purchase requests' }, { entity: 'suppliers', label: 'Suppliers' }],
-    startView: 'awaiting_decision',
-    layouts: [{ entity: 'requests', sections: [{ id: 'purchase', name: 'Purchase', fields: ['title', 'supplier', 'amountCents', 'category', 'justification'] }, { id: 'decision', name: 'Decision', fields: ['status', 'supplierVerified', 'decisionNote'] }] }],
-    views: [{ id: 'awaiting_decision', name: 'Awaiting decision', entity: 'requests', filters: [{ field: 'status', operator: 'eq', value: 'submitted' }], columns: ['title', 'supplier', 'amountCents', 'status'] }, { id: 'active_suppliers', name: 'Active suppliers', entity: 'suppliers', filters: [{ field: 'status', operator: 'eq', value: 'active' }], columns: ['title', 'contact', 'status'] }],
-    assumptions: ['All purchase decisions require owner review.', 'Requests above the configured approval ceiling are blocked; this is a hard limit, not an escalation.', 'Supplier verification is recorded on each request; it is not inferred from the supplier.', 'Example records are for preview only and will not be published.'],
-    entities: [requests, {
-      slug: 'suppliers', name: 'Suppliers', description: 'Maintain the suppliers your team buys from.',
-      entity: { name: 'supplier', label: 'Supplier', fields: {
-        title: { label: 'Supplier name', type: 'string', min: 2, max: 100 },
-        contact: { label: 'Contact', type: 'string', required: false, default: '', max: 150 },
-        status: { label: 'Status', type: 'enum', options: ['active', 'archived'], default: 'active', editable: false },
-      } }, settings: {}, reviewerRoles: ['owner'], actions: [{
-        name: 'archive', label: 'Archive supplier', description: 'Keep the supplier record and mark it archived.', roles: ['owner', 'operator'], input: {},
-        preconditions: [{ id: 'active', label: 'Supplier is active', field: 'status', operator: 'eq', value: 'active' }], policies: [], effects: { status: 'archived' },
-      }],
-    }],
-  })
+  return compileAssembly(purchasingAssembly())
 }
 
 export function sampleData(fields: Record<string, Field>): RecordData {

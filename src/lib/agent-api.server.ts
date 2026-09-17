@@ -11,6 +11,7 @@ export async function handleAgentCredential(request: Request, access: AgentAcces
     const match = /^Bearer (\S+)$/i.exec(header)
     if (!match) throw new KernelError('INVALID_CREDENTIAL', 'Send an agent credential in the Authorization: Bearer header.', 401)
     const p = await access.authenticate(match[1])
+    if (p.agentGrant === 'construct') throw new KernelError('FORBIDDEN', 'Builder credentials use /api/mcp to save and publish application drafts.', 403)
     if (request.method === 'GET') {
       const params = new URL(request.url).searchParams
       for (const key of params.keys()) if (!['cursor', 'change'].includes(key)) throw new KernelError('INVALID_INPUT', 'Use cursor to page records or change to read your proposal. The credential selects the application.')

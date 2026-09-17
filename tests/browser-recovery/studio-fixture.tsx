@@ -15,17 +15,17 @@ let job: BuildJobSnapshot | undefined = stored.job
 let published = false
 const persist = () => sessionStorage.setItem('studio-build-fixture', JSON.stringify({ plan, draft, job }))
 const proposal = { plan: { name: 'Team purchasing', summary: 'Track purchases from request to approval.', records: 'Purchase requests and suppliers.', workflow: 'Submit a request, review it, then approve or reject it.', rules: 'Owners review purchase requests before approval.', limitations: 'No payments or external integrations.' }, questions: [] }
-const makeDraft = (): Draft => ({ id: 'conversation-draft', brief: plan?.content.request ?? 'Purchasing example', definition: purchasingExample(), version: (draft?.version ?? 0) + 1, status: 'draft', source: 'example', projectSlug: null, baseProjectVersion: null, updatedAt: new Date().toISOString() })
+const makeDraft = (): Draft => ({ id: 'conversation-draft', brief: plan?.content.request ?? 'Purchasing example', definition: purchasingExample(), assembly: undefined, version: (draft?.version ?? 0) + 1, status: 'draft', source: 'example', projectSlug: null, baseProjectVersion: null, updatedAt: new Date().toISOString() })
 function simulateBuild(retry = false) {
   setTimeout(() => {
     if (!job || !plan || !['queued', 'running'].includes(job.status)) return
     job.status = retry ? 'completed' : 'failed'
     job.revision++
     if (retry) {
-      draft = makeDraft(); job.draftId = draft.id; job.completedTasks = ['structure', 'fields:requests', 'behavior:requests', 'presentation']; job.error = null
+      draft = makeDraft(); job.draftId = draft.id; job.completedTasks = ['assembly']; job.error = null
       plan.status = 'generated'; plan.draftId = draft.id; plan.version++
     } else {
-      job.completedTasks = ['structure']; job.task = 'fields:requests'; job.error = { code: 'MODEL_INCOMPLETE', message: 'Synthetic interruption while creating purchase request fields. Completed tasks are saved.' }
+      job.completedTasks = []; job.task = 'assembly'; job.error = { code: 'MODEL_INCOMPLETE', message: 'Synthetic interruption while choosing catalog modules. Completed tasks are saved.' }
     }
     job.events.push({ id: job.events.length + 1, task: job.task, message: retry ? 'Your application is ready to try. Nothing has been published.' : job.error!.message, at: new Date().toISOString() }); persist()
   }, 1800)
@@ -59,12 +59,12 @@ window.fetch = async (_url, options) => {
     if (body.step === 'build') {
       if (plan.status !== 'confirmed') return Response.json({ error: 'Confirm the plan first.' }, { status: 409 })
       plan.status = 'building'
-      job = { id: `job-${plan.version}`, planId: plan.id, planVersion: plan.version, status: 'queued', revision: 1, task: 'structure', completedTasks: [], draftId: null, error: null, events: [{ id: 1, task: 'structure', message: 'Build queued. You can close this page and return later.', at: new Date().toISOString() }] }
+      job = { id: `job-${plan.version}`, planId: plan.id, planVersion: plan.version, status: 'queued', revision: 1, task: 'assembly', completedTasks: [], draftId: null, error: null, events: [{ id: 1, task: 'assembly', message: 'Build queued. You can close this page and return later.', at: new Date().toISOString() }] }
       result = job; simulateBuild()
     } else result = plan
   } else if (body.type === 'retry_build' && job) { job.status = 'queued'; job.error = null; job.revision++; job.events.push({ id: job.events.length + 1, task: job.task, message: 'Retry queued. Completed tasks will be reused.', at: new Date().toISOString() }); result = job; simulateBuild(true) }
   else if (body.type === 'example') { draft = makeDraft(); result = draft }
-  else if (body.type === 'save_draft' && draft) { draft = { ...draft, definition: body.definition, brief: body.brief, version: draft.version + 1 }; result = draft }
+  else if (body.type === 'save_draft') { draft = { ...(draft ?? makeDraft()), definition: body.definition ?? draft?.definition ?? makeDraft().definition, assembly: body.assembly ?? draft?.assembly ?? null, brief: body.brief, version: (draft?.version ?? 0) + 1 }; result = draft }
   else if (body.type === 'publish_draft') { published = true; result = { slug: 'fixture-purchasing' } }
   else return Response.json({ error: 'Unsupported fixture request' }, { status: 400 })
   persist()

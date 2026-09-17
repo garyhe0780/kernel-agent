@@ -14,7 +14,7 @@ Small operations teams that need business applications such as purchasing, CRM, 
 
 Kernel is an agent-first platform for creating and running business applications. Describe how the business works, review a working project preview, and publish it. People and agents then use the same validated domain actions.
 
-A project means a business application, not an arbitrary generated software repository. Its versioned definitions describe entities, fields, relationships, actions, and policies. The kernel owns validation, authorization, persistence, execution, and history; the model proposes definitions and actions.
+A project means a business application, not an arbitrary generated software repository. Applications are assembled from Kernel’s closed catalog of modules. Compiled definitions still describe entities, fields, relationships, actions, and policies. The kernel owns validation, authorization, persistence, execution, and history; the model proposes catalog assemblies, not invented schemas.
 
 ## Positioning
 
@@ -24,28 +24,28 @@ NocoBase is a competitive reference, not a feature-parity claim. The intended di
 
 ## Operating Context
 
-TanStack Start, Better Auth email/password sessions, Prisma, and local SQLite. Run `pnpm setup`, then `pnpm dev`. New accounts start with an empty private workspace. Existing projects and records remain available.
+TanStack Start, Better Auth email/password sessions, Prisma, and PostgreSQL (embedded PGlite locally; Hyperdrive on Cloudflare). Run `pnpm setup`, then `pnpm dev`. New accounts require the configured `KERNEL_SIGNUP_CODE` and start with a private workspace that includes a labeled purchasing demo and sample records. Extra workspaces stay empty. Owners can remove or reinstall the demo. Local SQLite files from earlier builds are not migrated. See `docs/CLOUDFLARE.md` for Workers deployment.
 
-1. From Projects, choose Create application and describe the business process.
-2. A connected planner saves the request, asks up to three focused questions when needed, and proposes an editable business plan. Save for later preserves conversation, answers and plan. Explicitly review and confirm the current plan before generating a validated application draft. Without model credentials, use the explicitly labeled purchasing example.
-3. Inspect entities, relationships, fields, actions, rules, and assumptions. Try forms and lifecycle actions on local example records. Edit the name or numeric settings, add fields, or ask the connected builder to revise the draft.
+1. Open the purchasing demo to try queues, actions, and review, or from Projects choose Create application and assemble catalog modules or describe the business process.
+2. A connected planner saves the request, asks up to three focused questions when needed, and proposes an editable business plan that names catalog modules rather than invented entities. Save for later preserves conversation, answers and plan. Explicitly review and confirm the current plan before generating a validated application draft. Without model credentials, assemble modules yourself or use the labeled purchasing example.
+3. Inspect the selected modules, compiled preview, actions, rules, and assumptions. Try forms and lifecycle actions on local example records. Edit the name, aliases or module settings, or ask the connected builder to revise the assembly. Field-level schema editing is not the creation path for assembled drafts.
 4. Save the draft or publish the reviewed version. Publication atomically creates the project and its entity capabilities, without preview records.
 5. Open an entity queue, create real records, and use generated forms, relationship selectors, detail views, and actions.
 6. From Configure, choose Change application to revise a published application. Preview definition changes and their effect on existing records, then publish a new version. Versions retains publication history.
-7. In Configure → Agents, an owner can issue a credential for one application and selected operator actions, save the one-time secret, and revoke access. External agents use the bearer HTTP API or MCP endpoint to read application records, stage proposals, and check their status. MCP clients must support a configured bearer header.
+7. From Agents, an owner can issue a workspace builder credential. Favorite agents (Cursor, Claude, and other MCP clients that support a bearer header) connect to `/api/mcp` to assemble catalog modules, save drafts, and publish applications. Operate credentials remain application-scoped: they read records and stage selected operator actions; they cannot publish. Human review is still required to apply record changes.
 8. Ask the project agent for one action. It reads bounded project context, selects an existing action, and stages a proposal. An owner applies or rejects the proposed change.
 
-Routes: workspace and draft builder `/`; application queues `/p/:projectSlug`; configuration and execution history `/p/:projectSlug/build`; legacy public journal `/s/:workspaceId`; sign-in `/login`.
+Routes: workspace and draft builder `/`; catalog `/catalog`; application queues `/p/:projectSlug`; configuration and execution history `/p/:projectSlug/build`; legacy public journal `/s/:workspaceId`; sign-in `/login`; invite-only signup `/login?mode=signup` or `/login?code=`.
 
 ## Capabilities and Constraints
 
-Implemented: MCP Streamable HTTP discovery and scoped action tools, application-scoped agent credentials with selected actions, expiry and revocation, paginated agent discovery and proposal status, published application change drafts, live-data migration previews, project version history, additive field defaults, persistent draft revisions, natural-language draft generation and revision through an optional server-side Responses-compatible adapter, semantic definition validation, interactive sample preview, version-checked and idempotent publication, multiple entity queues per application, same-project record relationships, generated forms and details, owner/operator action contracts, policy evaluation, persistent proposals, human review, idempotency, optimistic concurrency, tenant isolation, execution history, and one-action operational model requests.
+Implemented: MCP Streamable HTTP construction and operation tools, workspace builder credentials that assemble catalog modules and publish application drafts, a workspace Catalog page that lists generic blocks and business modules, a human catalog module picker that saves the same assembly document, purchasing and sales catalog assemblies, application-scoped operate credentials with selected actions, expiry and revocation, paginated agent discovery and proposal status, published application change drafts, live-data migration previews, project version history, additive field defaults, persistent draft revisions, natural-language catalog assembly through an optional server-side Responses-compatible adapter, semantic definition validation, interactive sample preview, version-checked and idempotent publication, multiple entity queues per application, same-project record relationships, generated forms and details, owner/operator action contracts, policy evaluation, persistent proposals, human review, idempotency, optimistic concurrency, tenant isolation, execution history, and one-action operational model requests.
 
-Applications support 1–8 entities with string/integer/boolean/enum fields. Each entity has a title and lifecycle status. Relationships store a record ID, checked against the referenced entity and workspace. They do not provide joins, cascades, or cross-record policy evaluation. Rules support equality and numeric upper bounds; effects support literals and required action inputs. Generated definitions cannot execute arbitrary code, SQL, or external integrations.
+Applications compile from catalog modules into 1–8 entities with string/integer/boolean/enum fields. Each entity has a title and lifecycle status. Relationships store a record ID, checked against the referenced entity and workspace. They do not provide joins, cascades, or cross-record policy evaluation. Rules support equality and numeric upper bounds; effects support literals and required action inputs. Assemblies cannot invent entities, execute arbitrary code, SQL, or external integrations.
 
-The live builder requires `KERNEL_API_KEY` (with `OPENAI_API_KEY` as a fallback) and `KERNEL_MODEL` on the server. `KERNEL_API_BASE_URL` selects a Responses-compatible endpoint and defaults to OpenAI; provider configuration and limits are documented in `docs/MODEL_PROVIDERS.md`. The UI accurately shows when no model is configured. The purchasing example is a predefined editable definition, not natural-language generation. Model adapter transport tests use mocked responses; one isolated MiniMax-M3 live workflow passed with medium reasoning on 2026-09-12 (clarification, generation, publication, reviewed operation and additive revision). This does not establish reliability across models/providers or replace operator acceptance.
+The live builder requires `KERNEL_API_KEY` (with `OPENAI_API_KEY` as a fallback) and `KERNEL_MODEL` on the server. `KERNEL_API_BASE_URL` selects a Responses-compatible endpoint and defaults to OpenAI; provider configuration and limits are documented in `docs/MODEL_PROVIDERS.md`. The UI accurately shows when no model is configured. The purchasing example is a predefined catalog assembly, not natural-language generation. Model adapter transport tests use mocked responses; one isolated MiniMax-M3 live workflow passed with medium reasoning on 2026-09-12 (clarification, generation, publication, reviewed operation and additive revision). This does not establish reliability across models/providers or replace operator acceptance.
 
-The built-in operational model makes at most one proposal per request, using up to 100 records. External agent credentials can read all records in their application in pages of 100, and propose selected operator actions pinned to capability versions. Secrets expire after 1–90 days and are stored only as hashes. Revoked or expired credentials, or credentials whose issuing owner lost owner access, cannot be used or have pending proposals applied. Owners can still reject those proposals. They cannot publish projects or apply changes. All operational proposals still require human review. Configurable automatic execution is a future milestone, not shipped behavior. The legacy configuration simulator remains explicitly labeled as a simulator.
+The built-in operational model makes at most one proposal per request, using up to 100 records. Builder credentials are workspace-wide and can save and publish application drafts over MCP; they cannot stage or apply record changes. Operate credentials can read all records in their application in pages of 100, and propose selected operator actions pinned to capability versions; they cannot publish definitions. Secrets expire after 1–90 days and are stored only as hashes. Revoked or expired credentials, or credentials whose issuing owner lost owner access, cannot be used or have pending proposals applied. Owners can still reject those proposals. Session simulators without a builder credential cannot publish. All operational proposals still require human review. Configurable automatic execution is a future milestone, not shipped behavior. The legacy configuration simulator remains explicitly labeled as a simulator.
 
 Published applications created through the builder can add entities and fields, update labels and policies, and fill absent values from explicit defaults. Preview validates every existing record and shows before/after changes. Publication rejects stale previews or application versions, incompatible records, entity/field removals, field type changes, and relationship retargeting. Existing values are never overwritten by defaults. Affected pending proposals require fresh staging and review. Legacy fixed-template projects do not support this change flow. Version history retains definitions; it does not restore data or roll back publication.
 
@@ -53,7 +53,7 @@ Deferred: destructive schema migrations, version restoration, general visual sch
 
 ## Terminology
 
-Project: a business application with its own entity capabilities and working interface. Package: reusable capability definition. Entity: fields, validation, relationships, and versioned records. Action: input, authorized roles, preconditions, policies, and effects. Draft: a saved, versioned proposed application. Proposal/ChangeSet: an operational record change awaiting human review. Execution: an attributable append-only event.
+Project: a business application with its own entity capabilities and working interface. Block: a generic UI unit that takes a data binding (a saved view or a record) and does not carry business meaning. Wired blocks are filters, table, and record card; chart, chat, and email blocks are listed without a runtime. Module: a catalog unit Kernel can assemble (Object/Link/Action plus bound surfaces). Assembly: selected modules, links, settings and surfaces. Package: reusable capability definition kept as a fixture. Entity: compiled fields, validation, relationships, and versioned records. Action: input, authorized roles, preconditions, policies, and effects. Draft: a saved, versioned proposed application. Proposal/ChangeSet: an operational record change awaiting human review. Execution: an attributable append-only event.
 
 ## Brand Commitments
 
@@ -67,7 +67,7 @@ Kernel integration tests, mocked model transport tests, a purchasing example, an
 
 - People and agents share definitions and action validation.
 - Model output is a proposal; the server owns identity and permission.
-- Publishing rechecks the reviewed draft version and never installs sample records.
+- Publishing a reviewed draft never installs sample records. Signup may seed a separate labeled demo.
 - Projects own their entity namespaces; relationships cannot cross project or workspace boundaries.
 - Operational apply rechecks the record, definition, proposer authorization, policy, and relationship references transactionally.
 - Domain-specific logic belongs in definitions, not the generic evaluator.
@@ -79,7 +79,7 @@ Use the existing React Aria controls, visible labels, keyboard-operable entity s
 
 ## Success criteria
 
-- A new account can publish the purchasing example and operate it without handwritten purchasing UI.
+- A new account can open the labeled purchasing demo, operate its sample records, then publish their own application without handwritten purchasing UI.
 - With credentials configured, a description can produce a validated application draft and follow-up requests can revise it.
 - Drafts survive reloads; concurrent stale saves or publishes fail clearly.
 - Repeated publication creates one project and one publication event.
@@ -89,6 +89,7 @@ Use the existing React Aria controls, visible labels, keyboard-operable entity s
 - Every application publication retains its versioned definition and migration summary.
 - Relationships and proposals cannot access other projects' or workspaces' records.
 - Existing seeded projects continue to function.
+- An owner can issue a builder credential and an MCP client can assemble catalog modules and publish a validated application without using Kernel’s planner.
 
 ## Roadmap
 

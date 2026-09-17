@@ -26,7 +26,7 @@ export function AgentAccessPanel({ project, capabilities }: { project: string; c
   return <div className="stack">
     {error ? <Alert variant="danger">{error}</Alert> : null}
     {notice ? <Alert>{notice}</Alert> : null}
-    <Card><CardHeader><CardTitle>Connect an agent</CardTitle><CardDescription>Give an external agent access to this application’s records and selected actions. It can propose changes as an operator; an owner must review every proposal.</CardDescription></CardHeader>
+    <Card><CardHeader><CardTitle>Connect an agent</CardTitle><CardDescription>Give an external agent access to this application’s records and selected actions. It can propose changes as an operator; an owner must review every proposal. To create applications from Cursor or Claude, issue a builder credential from Agents instead.</CardDescription></CardHeader>
       <CardContent>
         <Form onSubmit={event => {
           event.preventDefault()

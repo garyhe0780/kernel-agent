@@ -17,9 +17,20 @@ import { Button } from './ui/button'
 import { Field, FieldGroup, FieldLabel, Textarea } from './ui/form-field'
 import { Input } from './ui/input'
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Empty, Spinner, ToggleGroup } from './ui/surfaces'
-import { sampleData, type Application, type Draft } from '@/kernel/application'
+import { compileAssembly, sampleData, type Application, type Draft } from '@/kernel/application'
+import { assembleSelection } from '@/kernel/assembly'
+import type { CatalogSnapshot } from '@/kernel/modules'
 import { evaluate, validateFields } from '@/kernel/definition'
 import { request as defaultRequest, type BusinessRecord } from '@/lib/client'
+import { ModulePicker, type ModuleSelection } from './module-picker'
+
+function selectionFrom(assembly?: Draft['assembly']): ModuleSelection {
+  return {
+    name: assembly?.name ?? 'New application',
+    description: assembly?.description ?? 'Assembled from Kernel catalog modules.',
+    modules: assembly?.modules.map(item => ({ use: item.use, as: item.as, name: item.name, label: item.label, settings: item.settings })) ?? [],
+  }
+}
 
 export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send = defaultRequest, planned = false, onStateChange, conversation, publicationBlocked = false }: {
   conversation?: ReactNode
@@ -37,6 +48,8 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
   const [draft, setDraft] = useState(initial)
   const [brief, setBrief] = useState(initial?.brief ?? '')
   const [definition, setDefinition] = useState<Application | undefined>(initial?.definition)
+  const [catalog, setCatalog] = useState<CatalogSnapshot[]>([])
+  const [selection, setSelection] = useState<ModuleSelection>(() => selectionFrom(initial?.assembly))
   const [previewView, setPreviewView] = useState<string | null>(initial?.definition.startView ?? null)
   const [active, setActive] = useState(initial?.definition.entities[0]?.slug ?? '')
   const [busy, setBusy] = useState('')
@@ -57,8 +70,12 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
   const records = sortViewRecords(samples.filter(r => r.capability === entity?.slug && matchesView(r.data, view)), view?.sort ?? { field: '$createdAt', direction: 'desc' })
   const previewColumns = view?.columns.length ? ['title', ...view.columns.filter(key => key !== 'title')] : ['title', 'status']
   const selected = records.find(r => r.id === selectedId) ?? records[0]
-  const dirty = hasPendingRequest || Boolean(clarification) || (draft ? JSON.stringify(draft.definition) !== JSON.stringify(definition) || brief !== draft.brief : Boolean(brief.trim()))
+  const assembled = Boolean(draft?.assembly)
+  const dirty = hasPendingRequest || Boolean(clarification) || (draft
+    ? (assembled ? JSON.stringify(selectionFrom(draft.assembly)) !== JSON.stringify(selection) || brief !== draft.brief : JSON.stringify(draft.definition) !== JSON.stringify(definition) || brief !== draft.brief)
+    : Boolean(brief.trim()) || selection.modules.length > 0)
   useEffect(() => { onStateChange?.({ dirty, busy: Boolean(busy) }) }, [dirty, busy, onStateChange])
+  useEffect(() => { request<CatalogSnapshot[]>('/api/kernel?modules=1').then(setCatalog).catch(caught => setError(caught instanceof Error ? caught.message : 'Unable to load catalog modules.')) }, [])
   const allowNavigation = useRef(false)
   const blocker = useBlocker({ shouldBlockFn: () => dirty && !allowNavigation.current, enableBeforeUnload: () => dirty && !allowNavigation.current, withResolver: true })
   const previewSchema = JSON.stringify(definition?.entities.map(e => ({ slug: e.slug, entity: e.entity })))
@@ -79,7 +96,16 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
   function accept(next: Draft) {
     setMigration(undefined)
     setClarification(undefined); setAnswers({}); setPendingRequest(undefined)
-    setDraft(next); setDefinition(next.definition); setBrief(next.brief); setActive(next.definition.entities[0].slug); setPreviewView(next.definition.startView); onSaved(next)
+    setDraft(next); setDefinition(next.definition); setSelection(selectionFrom(next.assembly)); setBrief(next.brief); setActive(next.definition.entities[0].slug); setPreviewView(next.definition.startView); onSaved(next)
+  }
+  function applySelection(next: ModuleSelection) {
+    setSelection(next)
+    try {
+      setDefinition(compileAssembly(assembleSelection({ ...next, assumptions: draft?.assembly?.assumptions })))
+      setError('')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Select the modules this application needs.')
+    }
   }
   async function build(inputBrief: string) {
     setBrief(inputBrief); setClarification(undefined); setAnswers({}); setPendingRequest('build')
@@ -89,7 +115,10 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
     if (pendingRequest === 'build') { await build(brief); return }
     setPendingRequest('clarify')
     let current = draft
-    if (draft && definition && JSON.stringify(definition) !== JSON.stringify(draft.definition)) {
+    if (draft && assembled && JSON.stringify(selectionFrom(draft.assembly)) !== JSON.stringify(selection)) {
+      current = await request<Draft>('/api/kernel', { type: 'save_draft', id: draft.id, expectedVersion: draft.version, brief: draft.brief, assembly: assembleSelection({ ...selection, assumptions: draft.assembly?.assumptions }) })
+      setDraft(current); setSelection(selectionFrom(current.assembly)); onSaved(current)
+    } else if (draft && definition && JSON.stringify(definition) !== JSON.stringify(draft.definition)) {
       current = await request<Draft>('/api/kernel', { type: 'save_draft', id: draft.id, expectedVersion: draft.version, brief: draft.brief, definition })
       setDraft(current); onSaved(current)
     }
@@ -103,13 +132,16 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
   async function save() {
     if (!draft || !definition) throw new Error('Create a draft first.')
     if (!dirty) return draft
-    const next = await request<Draft>('/api/kernel', { type: 'save_draft', id: draft.id, expectedVersion: draft.version, brief, definition })
+    const payload = assembled
+      ? { assembly: assembleSelection({ ...selection, assumptions: draft.assembly?.assumptions }) }
+      : { definition }
+    const next = await request<Draft>('/api/kernel', { type: 'save_draft', id: draft.id, expectedVersion: draft.version, brief, ...payload })
     accept(next)
     return next
   }
 
   const publicationReview = definition ? <>
-            <Field value={definition.name} isDisabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} maxLength={80} onChange={name => setDefinition({ ...definition, name })}><FieldLabel>Project name</FieldLabel><Input /></Field>
+            <Field value={assembled ? selection.name : definition.name} isDisabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} maxLength={80} onChange={name => { if (assembled) applySelection({ ...selection, name }); else setDefinition({ ...definition, name }) }}><FieldLabel>Project name</FieldLabel><Input /></Field>
             <Badge variant="warning">{draft?.baseProjectVersion ? `Changes to application v${draft.baseProjectVersion}` : draft?.source === 'example' ? 'Example draft' : 'Draft'} · draft {draft?.version}</Badge>
             <h3>Review before publishing</h3>
             <ul className="builder-assumptions">{definition.assumptions.map((item, i) => <li key={i}>{item}</li>)}</ul>
@@ -136,7 +168,7 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
       <div className="builder-heading" hidden={Boolean(conversation)}>
         <div><h2>{draft?.baseProjectVersion ? 'Review application changes' : draft ? 'Review your application' : 'What does your business need?'}</h2><p className="muted">Describe the work. Refine the preview. Publish when it fits.</p></div>
         <div className="actions">{dirty ? <Button variant="outline" disabled={Boolean(busy)} onPress={() => {
-          setDefinition(draft?.definition); setBrief(draft?.brief ?? ''); setClarification(undefined); setAnswers({}); setPendingRequest(undefined); setError(''); onClose()
+          setDefinition(draft?.definition); setSelection(selectionFrom(draft?.assembly)); setBrief(draft?.brief ?? ''); setClarification(undefined); setAnswers({}); setPendingRequest(undefined); setError(''); onClose()
         }}>Discard changes</Button> : null}<Button variant="ghost" disabled={Boolean(busy) || dirty} onPress={onClose}>Close</Button></div>
       </div>
       <div className="builder-layout">
@@ -160,7 +192,7 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
           {busy && definition ? <p className="builder-status" role="status"><Spinner /> {busy}</p> : null}
         </div>
         {entity && definition ? <div className="stack builder-preview">
-          <div className="builder-heading"><div><h3>{definition.name}</h3><Badge variant="warning">Interactive preview · example data</Badge></div>{conversation ? <div className="actions">{dirty ? <Button variant="ghost" disabled={Boolean(busy)} onPress={() => { setDefinition(draft?.definition); setBrief(draft?.brief ?? ''); setClarification(undefined); setAnswers({}); setPendingRequest(undefined); setError('') }}>Discard preview edits</Button> : null}<Button variant="outline" disabled={!dirty || Boolean(busy) || Boolean(clarification) || hasPendingRequest} onPress={() => run('Saving draft…', async () => { await save() })}>Save draft</Button><Button disabled={publicationBlocked || Boolean(busy)} onPress={() => setPublishOpen(true)}>Publish</Button></div> : null}</div>
+          <div className="builder-heading"><div><h3>{definition.name}</h3><Badge variant="warning">Interactive preview · example data</Badge></div>{conversation ? <div className="actions">{dirty ? <Button variant="ghost" disabled={Boolean(busy)} onPress={() => { setDefinition(draft?.definition); setSelection(selectionFrom(draft?.assembly)); setBrief(draft?.brief ?? ''); setClarification(undefined); setAnswers({}); setPendingRequest(undefined); setError('') }}>Discard preview edits</Button> : null}<Button variant="outline" disabled={!dirty || Boolean(busy) || Boolean(clarification) || hasPendingRequest} onPress={() => run('Saving draft…', async () => { await save() })}>Save draft</Button><Button disabled={publicationBlocked || Boolean(busy)} onPress={() => setPublishOpen(true)}>Publish</Button></div> : null}</div>
           <ToggleGroup label="Preview entity" value={entity.slug} onChange={value => { setActive(value); setPreviewView(null); setSelectedId('') }} options={applicationPresentation(definition).navigation.map(item => ({ value: item.entity, label: item.label }))} />
           {definition.views?.some(view => view.entity === entity.slug) ? <ToggleGroup label="Preview saved view" value={view?.id ?? 'all'} onChange={value => { setPreviewView(value === 'all' ? null : value); setSelectedId('') }} options={[{ value: 'all', label: 'All records' }, ...definition.views.filter(view => view.entity === entity.slug).map(view => ({ value: view.id, label: view.name }))]} /> : null}
           <Card>
@@ -173,18 +205,19 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
               {previewResult ? <Alert>{previewResult}</Alert> : null}
             </CardContent>
           </Card>
-          <details className="builder-definition"><summary>Customize record layouts</summary><ApplicationLayoutEditor entityId={entity.slug} onEntityChange={value => { setActive(value); setPreviewView(null); setSelectedId('') }} application={definition} disabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} onChange={setDefinition} /></details>
-          <details className="builder-definition"><summary>Customize navigation and views</summary><ApplicationViewEditor application={definition} disabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} onChange={setDefinition} /></details>
-          <details className="builder-definition"><summary>Fields, actions and rules</summary><div className="stack"><h3>Fields and relationships</h3>
+          {assembled && catalog.length ? <details className="builder-definition" open><summary>Catalog modules</summary><ModulePicker catalog={catalog} value={selection} disabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} onChange={applySelection} /></details> : null}
+          {assembled ? null : <details className="builder-definition"><summary>Customize record layouts</summary><ApplicationLayoutEditor entityId={entity.slug} onEntityChange={value => { setActive(value); setPreviewView(null); setSelectedId('') }} application={definition} disabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} onChange={setDefinition} /></details>}
+          {assembled ? null : <details className="builder-definition"><summary>Customize navigation and views</summary><ApplicationViewEditor application={definition} disabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} onChange={setDefinition} /></details>}
+          {assembled ? null : <details className="builder-definition"><summary>Fields, actions and rules</summary><div className="stack"><h3>Fields and relationships</h3>
           <ApplicationFieldEditor key={entity.slug} application={definition} entitySlug={entity.slug} disabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} onChange={setDefinition} />
           <dl className="kv">{Object.entries(entity.entity.fields).map(([key, field]) => <div className="builder-field" key={key}><dt>{field.label}</dt><dd>{field.reference ? `Links to ${definition.entities.find(e => e.slug === field.reference)?.name}` : field.type}{field.required ? ' · required' : ''}{!field.editable ? ' · set by actions' : ''}</dd></div>)}</dl>
           <h3>Actions and rules</h3>
           {entity.actions.map(item => <div key={item.name} className="builder-rule"><strong>{item.label}</strong><p>{item.description}</p><ul>{[...item.preconditions, ...item.policies].map(rule => <li key={rule.id}>{rule.label}: {rule.field.endsWith('Cents') ? 'Amount' : entity.entity.fields[rule.field]?.label} {rule.operator === 'lte' ? '≤' : '='} {rule.field.endsWith('Cents') ? money(rule.setting ? entity.settings[rule.setting] : rule.value) : String(rule.setting ? entity.settings[rule.setting] : rule.value)}</li>)}</ul></div>)}
-          {Object.keys(entity.settings).length ? <FieldGroup>{Object.entries(entity.settings).filter(([, value]) => typeof value === 'number').map(([key, value]) => <Field key={key} type="number" value={String(key.endsWith('Cents') ? Number(value) / 100 : value)} isDisabled={Boolean(busy)} onChange={next => setDefinition({ ...definition, entities: definition.entities.map(e => e.slug === entity.slug ? { ...e, settings: { ...e.settings, [key]: key.endsWith('Cents') ? Math.round(Number(next) * 100) : Number(next) } } : e) })}><FieldLabel>{key === 'approvalLimitCents' ? 'Approval ceiling (USD)' : key}</FieldLabel><Input step={key.endsWith('Cents') ? '0.01' : '1'} /></Field>)}</FieldGroup> : null}</div></details>
+          {Object.keys(entity.settings).length ? <FieldGroup>{Object.entries(entity.settings).filter(([, value]) => typeof value === 'number').map(([key, value]) => <Field key={key} type="number" value={String(key.endsWith('Cents') ? Number(value) / 100 : value)} isDisabled={Boolean(busy)} onChange={next => setDefinition({ ...definition, entities: definition.entities.map(e => e.slug === entity.slug ? { ...e, settings: { ...e.settings, [key]: key.endsWith('Cents') ? Math.round(Number(next) * 100) : Number(next) } } : e) })}><FieldLabel>{key === 'approvalLimitCents' ? 'Approval ceiling (USD)' : key}</FieldLabel><Input step={key.endsWith('Cents') ? '0.01' : '1'} /></Field>)}</FieldGroup> : null}</div></details>}
         </div> : <div className="builder-preview builder-preview-pending">
           <h3>Application preview</h3>
           <div className="builder-preview-state" role="status" aria-live="polite">
-            {busy ? <><Spinner /><h3>{busy}</h3><p>Your preview will appear here when the draft is ready.</p></> : clarification ? <Empty title="A few details to shape your application">Answer the questions to build a preview, or continue with the suggested assumptions.</Empty> : error ? <Empty title="Your preview is not ready yet">Your description is still here. Retry the request or edit it before trying again.</Empty> : <Empty title="Your application preview will appear here.">Kernel proposes the records, relationships, and actions your team needs.</Empty>}
+            {busy ? <><Spinner /><h3>{busy}</h3><p>Your preview will appear here when the draft is ready.</p></> : clarification ? <Empty title="A few details to shape your application">Answer the questions to build a preview, or continue with the suggested assumptions.</Empty> : error ? <Empty title="Your preview is not ready yet">Your description is still here. Retry the request or edit it before trying again.</Empty> : <Empty title="Your application preview will appear here.">Choose catalog modules, or describe the work for Kernel to assemble them.</Empty>}
           </div>
         </div>}
       </div>
