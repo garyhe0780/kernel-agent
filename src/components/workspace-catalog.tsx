@@ -34,7 +34,7 @@ export function WorkspaceCatalog() {
       <header className="main-header">
         <div>
           <h1>Catalog</h1>
-          <p>Blocks are generic and take a data binding. Modules carry the business meaning. The same table can show purchase requests or opportunities.</p>
+          <p>Blocks are generic and take a data binding. Modules carry the business meaning. The same table or board can show purchase requests, opportunities, or issues.</p>
         </div>
       </header>
       <div className="main-body workspace-home-body">
@@ -69,7 +69,12 @@ export function WorkspaceCatalog() {
                 <div>
                   <h4>Ports</h4>
                   <ul>
-                    {mod.ports.map(port => <li key={port.field}>{port.label} → <code>{port.target}</code></li>)}
+                    {mod.ports.map(port => (
+                      <li key={port.field}>
+                        {port.label} → <code>{port.target}</code>
+                        {port.required === false ? ' · optional' : ''}
+                      </li>
+                    ))}
                   </ul>
                 </div>
               ) : <p className="muted">No required links. Other modules can point here.</p>}

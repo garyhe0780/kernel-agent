@@ -34,6 +34,13 @@ export const kernelBlocks: KernelBlock[] = [
     wired: true,
   },
   {
+    id: 'board',
+    name: 'Board',
+    description: 'Columns of a bound view grouped by status. The same board can sit on issues or purchase requests.',
+    binding: 'view',
+    wired: true,
+  },
+  {
     id: 'chart',
     name: 'Chart',
     description: 'A bound view drawn as a chart. Kernel has no chart runtime yet.',
@@ -64,7 +71,7 @@ export const kernelBlocks: KernelBlock[] = [
 ]
 
 const surfaceBlocks: Record<SurfaceKind, string[]> = {
-  queue: ['filters', 'table'],
+  queue: ['filters', 'table', 'board'],
   directory: ['filters', 'table'],
   detail: ['details'],
 }

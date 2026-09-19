@@ -1,11 +1,11 @@
 import { z } from 'zod'
 import { recordLayoutSchema } from './application-layouts'
-import { materializeAssembly, purchasingAssembly, salesAssembly } from './compile'
+import { materializeAssembly, purchasingAssembly, salesAssembly, linearAssembly } from './compile'
 import type { Assembly } from './assembly'
 import { definitionSchema, validateFields, type Field, type RecordData } from './definition'
 import { savedViewSchema, navigationItemSchema } from './application-views'
 
-export { purchasingAssembly, salesAssembly }
+export { purchasingAssembly, salesAssembly, linearAssembly }
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
 const forbidden = new Set(['__proto__', 'constructor', 'prototype'])

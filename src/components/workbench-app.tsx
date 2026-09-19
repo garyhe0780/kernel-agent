@@ -15,7 +15,7 @@ import { date, shortId, money, request, type ActionResult } from '@/lib/client'
 import { actionAvailable, capabilityOf, idempotencyKey, pendingFor, statusLabel, statusVariant } from '@/lib/project-ui'
 import { useProject } from '@/lib/use-project'
 
-const destructive = new Set(['lose', 'retire', 'offboard', 'decline'])
+const destructive = new Set(['lose', 'retire', 'offboard', 'decline', 'cancel'])
 
 function plural(label: string) {
   if (label.endsWith('s')) return label
@@ -38,6 +38,56 @@ function cell(key: string, field: EntityField, data: RecordData) {
   return String(value)
 }
 
+function RecordBoard({
+  definition,
+  records,
+  selectedId,
+  snapshot,
+  onSelect,
+}: {
+  definition: Definition
+  records: { id: string; data: RecordData }[]
+  selectedId?: string
+  snapshot: { records: { id: string; data: RecordData }[] }
+  onSelect: (id: string) => void
+}) {
+  const statuses = definition.entity.fields.status?.options ?? []
+  const noun = definition.entity.label.toLowerCase()
+  return (
+    <div className="record-board" role="region" aria-label={`${plural(definition.entity.label)} board`}>
+      {statuses.map(value => {
+        const column = records.filter(record => record.data.status === value)
+        return (
+          <section className="record-board-column" key={value} aria-label={statusLabel(value)}>
+            <header>
+              <h3>{statusLabel(value)}</h3>
+              <span>{column.length}</span>
+            </header>
+            {column.length === 0 ? <p className="muted">No {plural(noun)}.</p> : column.map(record => (
+              <button
+                type="button"
+                className="record-board-card"
+                key={record.id}
+                aria-pressed={record.id === selectedId}
+                data-selected={record.id === selectedId}
+                onClick={() => onSelect(record.id)}
+              >
+                <strong>{String(record.data.title)}</strong>
+                <span>
+                  {Object.entries(definition.entity.fields).filter(([key, field]) => key !== 'title' && key !== 'status' && field.reference).map(([key, field]) => {
+                    const title = snapshot.records.find(item => item.id === record.data[key])?.data.title
+                    return title ? `${field.label} · ${String(title)}` : null
+                  }).filter(Boolean).join(' · ') || `#${shortId(record.id)}`}
+                </span>
+              </button>
+            ))}
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
 export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
   const { session, snapshot, error, busy, run, refresh, keys } = useProject(projectSlug)
   const [entitySlug, setEntitySlug] = useState<string>()
@@ -52,6 +102,7 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
   const [selectedId, setSelectedId] = useState<string>()
   const [createOpen, setCreateOpen] = useState(false)
   const [actionName, setActionName] = useState<string>()
+  const [layout, setLayout] = useState<'list' | 'board'>()
 
   const savedViews = snapshot?.project?.presentation?.views ?? []
   const view = savedViews.find(item => item.id === (viewId === undefined ? snapshot?.project?.presentation?.startView : viewId))
@@ -97,15 +148,16 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
   const canReview = definition.reviewerRoles.includes(snapshot.principal.role)
   const columns = view?.columns.length ? view.columns.filter(key => key !== 'title' && key !== 'status').map(key => [key, definition.entity.fields[key]] as [string, EntityField]) : extraColumns(definition)
   const showStatus = !view?.columns.length || view.columns.includes('status')
-  const chooseView = (id: string | null) => { setViewId(id); setSort(undefined); setStatus('all'); setQuery(''); setSelectedId(undefined); setAgentOpen(false) }
+  const chooseView = (id: string | null) => { setViewId(id); setSort(undefined); setStatus('all'); setQuery(''); setSelectedId(undefined); setAgentOpen(false); setLayout(id === 'board' ? 'board' : 'list') }
   const statuses = definition.entity.fields.status?.options ?? []
   const noun = definition.entity.label.toLowerCase()
   const nouns = plural(noun)
+  const queueLayout = layout ?? (view?.id === 'board' ? 'board' : 'list')
 
   return (
     <>
       <Toaster position="top-right" />
-      <ProjectFrame snapshot={snapshot} activeEntity={definition.slug} activeView={view?.id} onViewChange={chooseView} reviewing={status === 'pending'} onEntityChange={value => { setEntitySlug(value); setViewId(null); setSort(undefined); setStatus('all'); setQuery(''); setSelectedId(undefined); setActionName(undefined); setAgentOpen(false) }} onReview={() => { setEntitySlug(definition.slug); setViewId(null); setStatus('pending'); setQuery(''); setAgentOpen(false) }}>
+      <ProjectFrame snapshot={snapshot} activeEntity={definition.slug} activeView={view?.id} onViewChange={chooseView} reviewing={status === 'pending'} onEntityChange={value => { setEntitySlug(value); setViewId(null); setSort(undefined); setStatus('all'); setQuery(''); setSelectedId(undefined); setActionName(undefined); setAgentOpen(false); setLayout('list') }} onReview={() => { setEntitySlug(definition.slug); setViewId(null); setStatus('pending'); setQuery(''); setAgentOpen(false) }}>
         <main className="main desk-main" id="main-content" tabIndex={-1}>
           <header className="main-header">
             <div>
@@ -122,11 +174,13 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
               ...statuses.map(value => ({ value, label: `${statusLabel(value)} · ${snapshot.records.filter(r => r.capability === definition.slug && r.data.status === value && matchesView(r.data, view)).length}` })),
               ...(pendingCount ? [{ value: 'pending', label: `Needs review · ${pendingCount}` }] : []),
             ]} /></div>
-            <div className="desk-toolbar"><div className="desk-search"><Search aria-hidden="true" /><Field value={query} onChange={setQuery} aria-label={`Search ${nouns}`}><Input placeholder={`Search ${nouns}…`} /></Field></div><Button variant="ghost" size="sm" onPress={() => setSort(sort === 'name' ? 'newest' : 'name')}><ArrowDownWideNarrow data-icon="inline-start" />{sort === 'name' ? 'Name A–Z' : sort === 'newest' || !view || view.sort.field === '$createdAt' && view.sort.direction === 'desc' ? 'Newest first' : `${view.sort.field === '$createdAt' ? 'Created' : definition.entity.fields[view.sort.field]?.label} ${view.sort.direction === 'asc' ? '↑' : '↓'}`}</Button><span className="desk-result-count">{records.length} {records.length === 1 ? noun : nouns}</span></div>
+            <div className="desk-toolbar"><div className="desk-search"><Search aria-hidden="true" /><Field value={query} onChange={setQuery} aria-label={`Search ${nouns}`}><Input placeholder={`Search ${nouns}…`} /></Field></div><ToggleGroup label="Queue layout" value={queueLayout} onChange={value => setLayout(value as 'list' | 'board')} options={[{ value: 'list', label: 'List' }, { value: 'board', label: 'Board' }]} /><Button variant="ghost" size="sm" onPress={() => setSort(sort === 'name' ? 'newest' : 'name')}><ArrowDownWideNarrow data-icon="inline-start" />{sort === 'name' ? 'Name A–Z' : sort === 'newest' || !view || view.sort.field === '$createdAt' && view.sort.direction === 'desc' ? 'Newest first' : `${view.sort.field === '$createdAt' ? 'Created' : definition.entity.fields[view.sort.field]?.label} ${view.sort.direction === 'asc' ? '↑' : '↓'}`}</Button><span className="desk-result-count">{records.length} {records.length === 1 ? noun : nouns}</span></div>
             <div className="workbench desk-workbench">
               <Card className="desk-records">
                 <CardContent>
-                  {records.length === 0 ? <Empty title={query || status !== 'all' ? `No ${nouns} match these filters.` : view ? `No ${nouns} match this view.` : `No ${nouns} yet.`}>{query || status !== 'all' ? <Button variant="outline" onPress={() => { setQuery(''); setStatus('all') }}>Clear filters</Button> : view ? <p>Records outside this saved view are available in All {nouns}.</p> : <p>Choose New {noun} to add the first record. Create related records in their entity queue first.</p>}{view ? <Button variant="outline" onPress={() => { setEntitySlug(definition.slug); chooseView(null) }}>All {nouns}</Button> : null}</Empty> : (
+                  {records.length === 0 ? <Empty title={query || status !== 'all' ? `No ${nouns} match these filters.` : view ? `No ${nouns} match this view.` : `No ${nouns} yet.`}>{query || status !== 'all' ? <Button variant="outline" onPress={() => { setQuery(''); setStatus('all') }}>Clear filters</Button> : view ? <p>Records outside this saved view are available in All {nouns}.</p> : <p>Choose New {noun} to add the first record. Create related records in their entity queue first.</p>}{view ? <Button variant="outline" onPress={() => { setEntitySlug(definition.slug); chooseView(null) }}>All {nouns}</Button> : null}</Empty> : queueLayout === 'board' ? (
+                    <RecordBoard definition={definition} records={records} selectedId={selectedId} snapshot={snapshot} onSelect={id => { setSelectedId(id); setAgentOpen(false); setDetailTab('details'); if (window.matchMedia('(max-width: 1000px)').matches) document.getElementById('record-detail')?.scrollIntoView({ behavior: 'auto' }) }} />
+                  ) : (
                     <div className="table-scroll" role="region" aria-label="Record queue" tabIndex={0}><table className="data-table">
                       <thead>
                         <tr>

@@ -12,7 +12,7 @@ import { Button } from './ui/button'
 import { Field, FieldGroup, FieldLabel, Textarea } from './ui/form-field'
 import { Alert, Spinner } from './ui/surfaces'
 import { request } from '@/lib/client'
-import { salesAssembly, type Draft } from '@/kernel/application'
+import { linearAssembly, salesAssembly, type Draft } from '@/kernel/application'
 import { assembleSelection, selectionForModules } from '@/kernel/assembly'
 import type { CatalogSnapshot } from '@/kernel/modules'
 import { ModulePicker, type ModuleSelection } from './module-picker'
@@ -164,10 +164,12 @@ export function ApplicationStudio({ draft: initial, planId, seedModules, model, 
       <p className="muted">Or start with an idea the catalog can assemble</p><div className="studio-example-prompts">{[
       ['Purchase approvals', 'We need to track purchase requests, suppliers, and approvals before buying.'],
       ['Customer tracking', 'We need to track customers and sales opportunities, with owner review before converting a deal.'],
+      ['Issue tracking', 'We need to track issues across projects, with an optional assignee on each issue.'],
     ].map(([label, prompt]) => <Button key={label} variant="outline" disabled={locked} onPress={() => edit({ ...content, request: prompt })}>{label}</Button>)}</div>
       <div className="studio-example-prompts">
         <Button variant="link" disabled={locked} onPress={() => run('Opening purchasing example…', async () => { const next = await request<Draft>('/api/kernel', { type: 'example' }); setDraft(next); onSaved(next); setDirty(false); setPreview(true) })}>Try purchasing example<ArrowRight data-icon="inline-end" /></Button>
         <Button variant="link" disabled={locked} onPress={() => run('Opening sales example…', async () => { const next = await request<Draft>('/api/kernel', { type: 'save_draft', brief: 'Track customers and sales opportunities with owner review.', assembly: salesAssembly() }); setDraft(next); onSaved(next); setDirty(false); setPreview(true) })}>Try sales example<ArrowRight data-icon="inline-end" /></Button>
+        <Button variant="link" disabled={locked} onPress={() => run('Opening issues example…', async () => { const next = await request<Draft>('/api/kernel', { type: 'save_draft', brief: 'Track issues across projects with an optional assignee.', assembly: linearAssembly() }); setDraft(next); onSaved(next); setDirty(false); setPreview(true) })}>Try issues example<ArrowRight data-icon="inline-end" /></Button>
       </div>
       <p className="muted">Predefined catalog assemblies you can try and publish.</p></div> : null}
     {!job && plan && (plan.status === 'building' || (!preview && plan.status === 'generated') || Boolean(error)) ? <div className="stack"><p className="muted">Check the saved build status to recover your work.</p><Button variant="outline" disabled={locked} onPress={() => run('Checking build status…', async () => { await syncBuild(plan.id) })}>Check build status</Button>{plan.status === 'building' ? <Button variant="outline" disabled={locked} onPress={() => run('Recovering your plan…', async () => saved(await request('/api/kernel', { type: 'plan_step', id: plan.id, expectedVersion: plan.version, step: 'recover' })))}>Recover plan</Button> : null}</div> : null}

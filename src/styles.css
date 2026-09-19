@@ -891,6 +891,16 @@ main:focus { outline: none; }
 .desk-records .data-table th:first-child, .desk-records .data-table td:first-child { padding-left: 24px; }
 .app-desk .record-select { padding: 0; min-height: 22px; font-size: 12px; font-weight: 550; text-align: left; justify-content: flex-start; }
 .desk-record-reference { font-size: 10px; color: var(--color-quiet); margin-top: 3px; }
+.record-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 12px; overflow-x: auto; padding: 16px 24px 24px; align-items: start; }
+.record-board-column { background: var(--color-paper); border: 1px solid var(--color-line); border-radius: 8px; min-height: 160px; padding: 12px; display: grid; gap: 8px; align-content: start; }
+.record-board-column header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.record-board-column h3 { margin: 0; font-size: 12px; font-weight: 600; }
+.record-board-column header span, .record-board-column .muted { font-size: 11px; color: var(--color-quiet); }
+.record-board-card { display: grid; gap: 4px; text-align: left; width: 100%; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-surface); cursor: pointer; }
+.record-board-card strong { font-size: 12px; font-weight: 550; }
+.record-board-card span { font-size: 11px; color: var(--color-quiet); }
+.record-board-card:hover, .record-board-card[data-selected='true'] { background: var(--color-cobalt-wash); border-color: var(--color-cobalt-soft); }
+.record-board-card:focus-visible { outline: 2px solid var(--color-cobalt); outline-offset: 2px; }
 .desk-row-arrow { width: 22px; padding-left: 0 !important; }
 .desk-row-arrow svg { width: 13px; height: 13px; color: var(--color-quiet); }
 .app-desk .desk-inspector { border-left: 1px solid var(--color-line); background: #fdfdfe; min-width: 0; }
@@ -947,6 +957,7 @@ main:focus { outline: none; }
   .desk-views { padding: 0 16px; }
   .desk-toolbar { padding: 8px 16px; flex-wrap: wrap; gap: 4px 12px; }
   .desk-search { width: 100%; }
+  .record-board { padding: 12px 16px 16px; grid-auto-columns: minmax(200px, 78vw); }
   .app-desk .button, .app-desk .toggle-item, .app-desk .nav-item { min-height: 44px; }
   .app-desk .record-select { min-height: 44px; }
   .app-desk .desk-inspector > .card, .desk-assistant { padding: 20px 16px; }

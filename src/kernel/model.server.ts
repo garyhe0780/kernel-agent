@@ -97,7 +97,7 @@ export async function modelJson(instructions: string, input: unknown, fetcher: t
 export async function buildAssembly(brief: string, current?: unknown, fetcher: typeof fetch = fetch, report: (progress: BuildProgress) => void = () => {}) {
   const catalog = catalogSnapshot()
   const instructions = `You assemble Kernel applications from the catalog. Generate a concrete assembly JSON, never a JSON Schema, never an entities document, and never invented fields or actions. Return only the assembly matching this schema: ${JSON.stringify(z.toJSONSchema(assemblySchema))}.
-Choose only listed module ids. Bind every required port with links {from:"alias.field", to:"alias"}. Fill only settings keys declared on those modules. Surfaces may be queue, directory or detail and must use views and layouts those modules provide. Use stable aliases. Preserve an existing assembly on unrelated revisions. State unsupported requirements in assumptions. Catalog: ${JSON.stringify(catalog)}`
+Choose only listed module ids. Bind every required port with links {from:"alias.field", to:"alias"}. Optional ports may be omitted. Fill only settings keys declared on those modules. Surfaces may be queue, directory or detail and must use views and layouts those modules provide. Use stable aliases. Preserve an existing assembly on unrelated revisions. State unsupported requirements in assumptions. Catalog: ${JSON.stringify(catalog)}`
   report({ stage: 'generating', message: 'Choosing catalog modules and wiring them together.' })
   let output = await modelJson(instructions, { brief, current }, fetcher)
   report({ stage: 'validating', message: 'Checking the catalog assembly.' })

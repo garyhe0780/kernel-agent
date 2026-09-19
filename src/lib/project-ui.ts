@@ -2,9 +2,9 @@ import { evaluate, type Definition } from '@/kernel/definition'
 import type { BusinessRecord, CapabilitySnapshot, Proposal, Snapshot } from '@/lib/client'
 
 export function statusVariant(status: string) {
-  if (status === 'approved' || status === 'applied' || status === 'published' || status === 'converted' || status === 'confirmed' || status === 'invoiced' || status === 'resolved' || status === 'done' || status === 'assigned' || status === 'active' || status === 'closed') return 'success' as const
-  if (status === 'submitted' || status === 'pending' || status === 'staged' || status === 'draft' || status === 'quoted' || status === 'open' || status === 'waiting' || status === 'at_risk' || status === 'in_stock' || status === 'on_leave' || status === 'remediating') return 'warning' as const
-  if (status === 'declined' || status === 'rejected' || status === 'blocked' || status === 'conflict' || status === 'lost' || status === 'retired' || status === 'offboarded' || status === 'waived') return 'danger' as const
+  if (status === 'approved' || status === 'applied' || status === 'published' || status === 'converted' || status === 'confirmed' || status === 'invoiced' || status === 'resolved' || status === 'done' || status === 'assigned' || status === 'active' || status === 'closed' || status === 'completed') return 'success' as const
+  if (status === 'submitted' || status === 'pending' || status === 'staged' || status === 'draft' || status === 'quoted' || status === 'open' || status === 'waiting' || status === 'at_risk' || status === 'in_stock' || status === 'on_leave' || status === 'remediating' || status === 'started' || status === 'backlog' || status === 'planned') return 'warning' as const
+  if (status === 'declined' || status === 'rejected' || status === 'blocked' || status === 'conflict' || status === 'lost' || status === 'retired' || status === 'offboarded' || status === 'waived' || status === 'canceled') return 'danger' as const
   return 'neutral' as const
 }
 

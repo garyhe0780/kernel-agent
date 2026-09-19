@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { moduleById } from './modules'
+import { moduleById, moduleKind, portRequired } from './modules'
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
 const linkFrom = z.string().regex(/^[a-z][a-z0-9_]{0,39}\.[a-z][a-zA-Z0-9_]{0,49}$/)
@@ -55,7 +55,7 @@ export function validateAssembly(raw: unknown): Assembly {
   }
   for (const { item, mod } of instances) {
     for (const port of mod.ports) {
-      if (!bound.has(`${item.as}.${port.field}`)) throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
+      if (portRequired(port) && !bound.has(`${item.as}.${port.field}`)) throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
     }
   }
   const viewIds = new Set<string>()
@@ -86,7 +86,9 @@ export function selectionForModules(ids: string[]) {
     if (!mod) throw new Error(`Unknown module: ${id}`)
     seen.add(id)
     ordered.push(id)
-    for (const port of mod.ports) add(port.target)
+    for (const port of mod.ports) {
+      if (portRequired(port)) add(port.target)
+    }
   }
   for (const id of ids) add(id)
   return {
@@ -122,15 +124,17 @@ export function assembleSelection(input: {
   })
   const links = modules.flatMap(item => {
     const mod = moduleById(item.use)!
-    return mod.ports.map(port => {
+    return mod.ports.flatMap(port => {
       const matches = modules.filter(entry => entry.use === port.target)
-      if (matches.length !== 1) throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
-      return { from: `${item.as}.${port.field}`, to: matches[0].as }
+      if (matches.length > 1) throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
+      if (matches.length === 1) return [{ from: `${item.as}.${port.field}`, to: matches[0].as }]
+      if (!portRequired(port)) return []
+      throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
     })
   })
   const surfaces = modules.flatMap(item => {
     const mod = moduleById(item.use)!
-    const kind = mod.ports.length ? 'queue' as const : 'directory' as const
+    const kind = moduleKind(mod)
     return [
       ...mod.views.map(view => ({ kind, of: item.as, view: view.id, name: view.name })),
       ...(mod.layout ? [{ kind: 'detail' as const, of: item.as }] : []),

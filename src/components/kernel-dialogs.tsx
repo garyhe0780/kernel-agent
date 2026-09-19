@@ -72,7 +72,10 @@ export function CreateEntityDialog({ open, definition, records = [], error, busy
       <Form onSubmit={event => {
         event.preventDefault()
         const values = new FormData(event.currentTarget)
-        const data: Record<string, string | number | boolean> = { ...choices, ...flags, ...references }
+        const data: Record<string, string | number | boolean> = { ...choices, ...flags }
+        for (const [key, value] of Object.entries(references)) {
+          if (value) data[key] = value
+        }
         for (const [key, field] of fields) {
           if (field.type === 'enum' || field.type === 'boolean' || field.reference) continue
           if (key === 'amountCents') {

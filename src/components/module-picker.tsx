@@ -22,6 +22,7 @@ export function ModulePicker({ catalog, value, onChange, disabled }: {
     if (checked) {
       const added = [{ use: mod.id, as: selected(mod.id)?.as ?? mod.defaultAlias, settings: Object.keys(mod.settings).length ? { ...mod.settings } : undefined }]
       for (const port of mod.ports) {
+        if (port.required === false) continue
         if (value.modules.some(item => item.use === port.target) || added.some(item => item.use === port.target)) continue
         const target = catalog.find(item => item.id === port.target)
         if (target) added.push({ use: target.id, as: target.defaultAlias, settings: Object.keys(target.settings).length ? { ...target.settings } : undefined })
@@ -29,7 +30,7 @@ export function ModulePicker({ catalog, value, onChange, disabled }: {
       onChange({ ...value, modules: [...value.modules.filter(item => !added.some(entry => entry.use === item.use)), ...added] })
       return
     }
-    const remove = new Set([mod.id, ...catalog.filter(item => item.ports.some(port => port.target === mod.id)).map(item => item.id)])
+    const remove = new Set([mod.id, ...catalog.filter(item => item.ports.some(port => port.target === mod.id && port.required !== false)).map(item => item.id)])
     onChange({ ...value, modules: value.modules.filter(item => !remove.has(item.use)) })
   }
   function update(id: string, patch: Partial<ModuleSelection['modules'][number]>) {
