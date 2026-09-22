@@ -2,9 +2,11 @@ import { evaluate, type Definition } from '@/kernel/definition'
 import type { BusinessRecord, CapabilitySnapshot, Proposal, Snapshot } from '@/lib/client'
 
 export function statusVariant(status: string) {
-  if (status === 'approved' || status === 'applied' || status === 'published' || status === 'converted' || status === 'confirmed' || status === 'invoiced' || status === 'resolved' || status === 'done' || status === 'assigned' || status === 'active' || status === 'closed' || status === 'completed') return 'success' as const
-  if (status === 'submitted' || status === 'pending' || status === 'staged' || status === 'draft' || status === 'quoted' || status === 'open' || status === 'waiting' || status === 'at_risk' || status === 'in_stock' || status === 'on_leave' || status === 'remediating' || status === 'started' || status === 'backlog' || status === 'planned') return 'warning' as const
-  if (status === 'declined' || status === 'rejected' || status === 'blocked' || status === 'conflict' || status === 'lost' || status === 'retired' || status === 'offboarded' || status === 'waived' || status === 'canceled') return 'danger' as const
+  const value = status.toLowerCase()
+  if (value === 'open') return 'primary' as const
+  if (value === 'approved' || value === 'applied' || value === 'published' || value === 'converted' || value === 'confirmed' || value === 'invoiced' || value === 'resolved' || value === 'done' || value === 'assigned' || value === 'active' || value === 'closed' || value === 'completed' || value === 'posted') return 'success' as const
+  if (value === 'submitted' || value === 'pending' || value === 'staged' || value === 'draft' || value === 'quoted' || value === 'demo' || value === 'waiting' || value === 'at_risk' || value === 'in_stock' || value === 'on_leave' || value === 'remediating' || value === 'started' || value === 'backlog' || value === 'planned') return 'warning' as const
+  if (value === 'declined' || value === 'rejected' || value === 'blocked' || value === 'conflict' || value === 'lost' || value === 'retired' || value === 'offboarded' || value === 'waived' || value === 'canceled' || value === 'revoked' || value === 'failed') return 'danger' as const
   return 'neutral' as const
 }
 

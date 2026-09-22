@@ -1,7 +1,9 @@
 /** Closed catalog of generic blocks. Blocks take a data binding; they do not carry business meaning. */
 
+import { grammarById, type GrammarId } from './grammars'
+
 export type BlockBinding = 'view' | 'record'
-export type SurfaceKind = 'queue' | 'directory' | 'detail'
+export type SurfaceKind = GrammarId
 
 export type KernelBlock = {
   id: string
@@ -36,16 +38,23 @@ export const kernelBlocks: KernelBlock[] = [
   {
     id: 'board',
     name: 'Board',
-    description: 'Columns of a bound view grouped by status. The same board can sit on issues or purchase requests.',
+    description: 'Columns of a bound view grouped by status. The same board can sit on issues or opportunities.',
+    binding: 'view',
+    wired: true,
+  },
+  {
+    id: 'stats',
+    name: 'Stats',
+    description: 'Record counts, status totals, integer sums, and a created-this-week trend from a bound view. Uses $createdAt; Kernel has no date field type.',
     binding: 'view',
     wired: true,
   },
   {
     id: 'chart',
     name: 'Chart',
-    description: 'A bound view drawn as a chart. Kernel has no chart runtime yet.',
+    description: 'Status breakdown of a bound view. The chart reads aggregates already computed from records; it does not run SQL.',
     binding: 'view',
-    wired: false,
+    wired: true,
   },
   {
     id: 'chat',
@@ -70,12 +79,6 @@ export const kernelBlocks: KernelBlock[] = [
   },
 ]
 
-const surfaceBlocks: Record<SurfaceKind, string[]> = {
-  queue: ['filters', 'table', 'board'],
-  directory: ['filters', 'table'],
-  detail: ['details'],
-}
-
 export function blockById(id: string) {
   return kernelBlocks.find(block => block.id === id)
 }
@@ -84,10 +87,12 @@ export function blockCatalog() {
   return kernelBlocks.map(block => ({ ...block }))
 }
 
-export function composeSurface(kind: SurfaceKind) {
-  return surfaceBlocks[kind].map(id => {
+export function composeSurface(grammar: GrammarId) {
+  const spec = grammarById(grammar)
+  if (!spec) throw new Error(`Unknown grammar: ${grammar}.`)
+  return spec.blocks.map(id => {
     const block = blockById(id)
-    if (!block?.wired) throw new Error(`Surface ${kind} cannot use unwired block ${id}.`)
+    if (!block?.wired) throw new Error(`Grammar ${grammar} cannot use unwired block ${id}.`)
     return block
   })
 }

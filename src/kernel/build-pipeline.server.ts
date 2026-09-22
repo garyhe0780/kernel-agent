@@ -2,6 +2,8 @@ import { z } from 'zod'
 import { assemblySchema, validateAssembly, type Assembly } from './assembly'
 import { compileAssembly } from './application'
 import { catalogSnapshot } from './modules'
+import { grammarCatalog } from './grammars'
+import { patternCatalog } from './patterns'
 import { modelJson } from './model.server'
 import { KernelError } from './errors'
 import type { Application } from './application'
@@ -11,7 +13,7 @@ export type Checkpoints = Record<string, unknown>
 export type PipelineTask = { key: string; message: string }
 
 const constraints = `You assemble Kernel applications from the catalog. Output a concrete JSON assembly, never a JSON Schema or an entities document. Never invent entities, fields, actions, SQL, integrations or automatic execution.
-Choose only listed module ids. Bind every required port with links {from:"alias.field", to:"alias"}. Fill only settings keys declared on those modules. Surfaces may be queue, directory or detail and must use views/layouts those modules provide. Use stable aliases. Preserve an existing assembly on unrelated revisions. State unsupported requirements in assumptions.`
+Choose only listed module ids. Bind every required port with links {from:"alias.field", to:"alias"}. Fill only settings keys declared on those modules. Surfaces carry a grammar (overview, board, ledger, directory, detail) and must use views/layouts those modules provide. Prefer a listed pattern when the request matches purchasing, CRM, issues, payments, or support. Use stable aliases. Preserve an existing assembly on unrelated revisions. State unsupported requirements in assumptions. Do not invent date fields, calendars, FX conversion, SQL, or integrations.`
 
 export function nextBuildTask(checkpoints: Checkpoints): PipelineTask {
   if (!checkpoints.assembly) return { key: 'assembly', message: 'Choosing catalog modules and wiring them together.' }
@@ -21,7 +23,7 @@ export function nextBuildTask(checkpoints: Checkpoints): PipelineTask {
 export async function executeBuildTask(input: BuildInput, checkpoints: Checkpoints, fetcher: typeof fetch = fetch): Promise<unknown> {
   const task = nextBuildTask(checkpoints)
   if (task.key === 'assemble') return validateAssembly(checkpoints.assembly)
-  const catalog = catalogSnapshot()
+  const catalog = { modules: catalogSnapshot(), grammars: grammarCatalog(), patterns: patternCatalog() }
   const schema = assemblySchema
   const instruction = 'Return only the assembly JSON. Select catalog modules, aliases, links, settings and surfaces. Do not return entities, fields or actions.'
   let invalid: unknown, validationError: string | undefined

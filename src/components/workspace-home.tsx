@@ -4,15 +4,18 @@ import type { Draft } from '@/kernel/application'
 import { useRefreshWorkspace, useWorkspaceSnapshot } from './workspace-layout'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/surfaces'
 import { Dialog } from './ui/dialog'
 import { projectKind } from '@/kernel/projects'
 import { moduleById } from '@/kernel/modules'
+import { patternById } from '@/kernel/patterns'
 import { request } from '@/lib/client'
+import { WorkspaceActionLink, WorkspaceEntityCard } from './workspace-entity-card'
 
 
-export function WorkspaceHome({ view = 'overview', assemble }: { view?: 'overview' | 'applications'; assemble?: string }) {
+export function WorkspaceHome({ view = 'overview', assemble, pattern }: { view?: 'overview' | 'applications'; assemble?: string; pattern?: string }) {
   const snapshot = useWorkspaceSnapshot()
   const refresh = useRefreshWorkspace()
   const navigate = useNavigate()
@@ -30,6 +33,7 @@ export function WorkspaceHome({ view = 'overview', assemble }: { view?: 'overvie
   const owner = snapshot.principal.role === 'owner'
   const demo = snapshot.projects.find(project => project.demo)
   const applications = snapshot.projects.filter(project => !project.demo)
+  const savedPlans = plans.filter(p => p.status !== 'generated')
 
   useEffect(() => {
     if (!owner) return
@@ -54,6 +58,26 @@ export function WorkspaceHome({ view = 'overview', assemble }: { view?: 'overvie
     void navigate({ to: '/applications', search: {}, replace: true })
   }, [assemble, owner, navigate])
 
+  useEffect(() => {
+    if (!pattern || !owner || !patternById(pattern)) return
+    const chosen = pattern
+    let cancelled = false
+    setBuilding(true)
+    setDraft(undefined)
+    setPlanId(undefined)
+    setSeedModules(undefined)
+    request<Draft>('/api/kernel', { type: 'save_draft', brief: `${patternById(chosen)!.name} assembled from the catalog pattern.`, pattern: chosen })
+      .then(next => {
+        if (cancelled) return
+        setDraft(next)
+        setPlanId(undefined)
+        setSeedModules(undefined)
+        void navigate({ to: '/applications', search: {}, replace: true })
+      })
+      .catch(caught => { if (!cancelled) setError(caught instanceof Error ? caught.message : 'Unable to open this pattern.') })
+    return () => { cancelled = true }
+  }, [pattern, owner, navigate])
+
   async function run(label: string, work: () => Promise<void>) {
     setBusy(label); setError('')
     try { await work() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to update the purchasing demo.') }
@@ -61,7 +85,7 @@ export function WorkspaceHome({ view = 'overview', assemble }: { view?: 'overvie
   }
 
   const firstRun = !building && applications.length === 0
-  const overviewIdle = view === 'overview' && workLoaded && owner && !plans.some(p => p.status !== 'generated') && !drafts.length
+  const overviewIdle = view === 'overview' && workLoaded && owner && !savedPlans.length && !drafts.length
 
   return (
     <main className="main" id="main-content" tabIndex={-1}>
@@ -72,12 +96,12 @@ export function WorkspaceHome({ view = 'overview', assemble }: { view?: 'overvie
           </div>
           {owner && !building ? <Button onPress={() => { setDraft(undefined); setPlanId(undefined); setSeedModules(undefined); setBuilding(true) }}>Create application</Button> : null}
         </header>
-        <div className="main-body workspace-home-body">
+        <div className={building ? 'main-body' : 'main-body workspace-home-body'}>
           {error ? <Alert variant="danger">{error}</Alert> : null}
           {building ? <ApplicationStudio key={planId ?? draft?.id ?? seedModules?.join(',') ?? 'new'} planId={planId} draft={draft} seedModules={draft || planId ? undefined : seedModules} model={model} onSaved={next => setDrafts(current => [next, ...current.filter(d => d.id !== next.id)])} onClose={() => { setBuilding(false); setSeedModules(undefined); request<BuilderPlan[]>('/api/kernel?plans=1').then(setPlans).catch(e => setError(e.message)) }} /> : null}
           {!building && overviewIdle && !firstRun ? <section className="stack"><h2>Ready for your next idea</h2><p className="muted">No saved plans or drafts to continue. Create an application when you’re ready.</p></section> : null}
-          {!building && plans.some(p => p.status !== 'generated') ? <section className="stack" aria-label="Saved plans"><h2>Continue planning</h2>{plans.filter(p => p.status !== 'generated').map(p => <div className="draft-row" key={p.id}><div><strong>{p.content.proposal?.plan.name || p.content.request.slice(0, 80)}</strong><p className="muted">Saved plan · {p.status === 'confirmed' ? 'Ready to build' : 'In progress'}</p></div><Button variant="outline" onPress={() => { setPlanId(p.id); setDraft(drafts.find(d => d.id === p.draftId)); setBuilding(true) }}>Open plan</Button></div>)}</section> : null}
-          {!building && drafts.length ? <section className="stack" aria-label="Saved drafts"><h2>Continue building</h2>{drafts.map(item => <div className="draft-row" key={item.id}><div><strong>{item.definition.name}</strong><p className="muted">{item.baseProjectVersion ? `Application v${item.baseProjectVersion} changes` : 'Draft'} · revision {item.version} · {item.assembly ? `${item.assembly.modules.length} modules` : `${item.definition.entities.length} entities`}</p></div><Button variant="outline" onPress={() => { setDraft(item); setPlanId(undefined); setBuilding(true) }}>Open draft</Button></div>)}</section> : null}
+          {!building && savedPlans.length ? <section className={view === 'applications' ? 'application-list' : 'stack'} aria-label="Saved plans"><h2>Continue planning</h2><div className={view === 'applications' ? 'project-grid' : 'stack'}>{savedPlans.map(p => <WorkspaceEntityCard key={p.id} className={view === 'applications' ? 'project-card' : undefined} title={p.content.proposal?.plan.name || p.content.request.slice(0, 80)} description={`Saved plan · ${p.status === 'confirmed' ? 'Ready to build' : 'In progress'}`} actions={<Button variant="outline" onPress={() => { setPlanId(p.id); setDraft(drafts.find(d => d.id === p.draftId)); setBuilding(true) }}>Open plan<ArrowRight data-icon="inline-end" /></Button>} />)}</div></section> : null}
+          {!building && drafts.length ? <section className="stack" aria-label="Saved drafts"><h2>Continue building</h2>{drafts.map(item => <WorkspaceEntityCard key={item.id} title={item.definition.name} description={`${item.baseProjectVersion ? `Application v${item.baseProjectVersion} changes` : 'Draft'} · revision ${item.version} · ${item.assembly ? `${item.assembly.modules.length} modules` : `${item.definition.entities.length} entities`}`} actions={<Button variant="outline" onPress={() => { setDraft(item); setPlanId(undefined); setBuilding(true) }}>Open draft<ArrowRight data-icon="inline-end" /></Button>} />)}</section> : null}
           {firstRun ? (
             <Card>
               <CardHeader>
@@ -97,37 +121,25 @@ export function WorkspaceHome({ view = 'overview', assemble }: { view?: 'overvie
             </Card>
           ) : null}
           {!building && view === 'overview' && applications.length ? (
-            <section className="stack" aria-label="Workspace applications"><div className="overview-section-heading"><h2>Your applications</h2><Link to="/applications">View all applications</Link></div>{applications.map(project => <Link className="overview-application-row" key={project.slug} to="/p/$projectSlug" params={{ projectSlug: project.slug }}><div><strong>{project.name}</strong><p className="muted">{project.description}</p></div><span>Open application</span></Link>)}</section>
+            <section className="stack" aria-label="Workspace applications"><div className="overview-section-heading"><h2>Your applications</h2><Link to="/applications">View all applications</Link></div>{applications.map(project => <WorkspaceEntityCard key={project.slug} title={project.name} description={project.description} actions={<WorkspaceActionLink to="/p/$projectSlug" params={{ projectSlug: project.slug }}>Open application</WorkspaceActionLink>} />)}</section>
           ) : null}
           {!building && view === 'overview' && demo && applications.length ? (
-            <section className="stack" aria-label="Purchasing demo"><div className="overview-section-heading"><h2>Purchasing demo</h2><Badge variant="warning">Demo</Badge></div><Link className="overview-application-row" to="/p/$projectSlug" params={{ projectSlug: demo.slug }}><div><strong>{demo.name}</strong><p className="muted">{demo.description}</p></div><span>Open demo</span></Link></section>
+            <section className="stack" aria-label="Purchasing demo"><h2>Purchasing demo</h2><WorkspaceEntityCard title={demo.name} description={demo.description} badge={<Badge variant="warning">Demo</Badge>} actions={<WorkspaceActionLink to="/p/$projectSlug" params={{ projectSlug: demo.slug }}>Open demo</WorkspaceActionLink>} /></section>
           ) : null}
           {!building && view === 'applications' && applications.length ? (
             <section className="application-list" aria-label="Published applications"><h2>Published applications</h2><div className="project-grid">
               {applications.map(project => (
-                <Link key={project.slug} to="/p/$projectSlug" params={{ projectSlug: project.slug }} className="card project-card">
-                  <CardHeader>
-                    <CardTitle>{project.name}</CardTitle>
-                    <CardDescription>{project.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="muted">{projectKind(project)} · Published version {project.version}</p><span>Open application</span>
-                  </CardContent>
-                </Link>
+                <WorkspaceEntityCard key={project.slug} className="project-card" title={project.name} description={project.description} actions={<WorkspaceActionLink to="/p/$projectSlug" params={{ projectSlug: project.slug }}>Open application</WorkspaceActionLink>}>
+                  <p className="muted">{projectKind(project)} · Published version {project.version}</p>
+                </WorkspaceEntityCard>
               ))}
             </div></section>
           ) : null}
           {!building && view === 'applications' && demo && applications.length ? (
-            <section className="application-list" aria-label="Purchasing demo"><div className="overview-section-heading"><h2>Purchasing demo</h2><Badge variant="warning">Demo</Badge></div><div className="project-grid">
-              <Link to="/p/$projectSlug" params={{ projectSlug: demo.slug }} className="card project-card">
-                <CardHeader>
-                  <CardTitle>{demo.name}</CardTitle>
-                  <CardDescription>{demo.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="muted">{projectKind(demo)} · Published version {demo.version}</p><span>Open demo</span>
-                </CardContent>
-              </Link>
+            <section className="application-list" aria-label="Purchasing demo"><h2>Purchasing demo</h2><div className="project-grid">
+              <WorkspaceEntityCard className="project-card" title={demo.name} description={demo.description} badge={<Badge variant="warning">Demo</Badge>} actions={<WorkspaceActionLink to="/p/$projectSlug" params={{ projectSlug: demo.slug }}>Open demo</WorkspaceActionLink>}>
+                <p className="muted">{projectKind(demo)} · Published version {demo.version}</p>
+              </WorkspaceEntityCard>
             </div></section>
           ) : null}
         </div>

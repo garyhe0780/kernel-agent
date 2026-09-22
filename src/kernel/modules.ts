@@ -3,11 +3,11 @@ import { procurement } from './procurement'
 import type { RecordLayout } from './application-layouts'
 import type { SavedView } from './application-views'
 import { composeSurface } from './blocks'
+import { resolveViewGrammar, type WorkingGrammar } from './grammars'
 
 /** Core catalog of assemblable modules. Applications are compiled from these; they are not generated entity schemas. */
 
 export type LinkPort = { field: string; target: string; label: string; required?: boolean }
-export type ModuleKind = 'queue' | 'directory'
 
 export function portRequired(port: LinkPort) {
   return port.required !== false
@@ -23,7 +23,7 @@ export type KernelModule = {
   ports: LinkPort[]
   views: ModuleView[]
   layout?: ModuleLayout
-  kind?: ModuleKind
+  grammar?: WorkingGrammar
 }
 
 function requestModule(): KernelModule {
@@ -35,9 +35,11 @@ function requestModule(): KernelModule {
     defaultAlias: 'requests',
     definition: definitionSchema.parse(definition),
     ports: [{ field: 'supplier', target: 'directory.party', label: 'Supplier' }],
+    grammar: 'ledger',
     views: [{
       id: 'awaiting_decision',
       name: 'Awaiting decision',
+      grammar: 'ledger',
       filters: [{ field: 'status', operator: 'eq', value: 'submitted' }],
       sort: { field: '$createdAt', direction: 'desc' },
       columns: ['title', 'supplier', 'amountCents', 'status'],
@@ -75,9 +77,11 @@ function partyModule(): KernelModule {
       }],
     }),
     ports: [],
+    grammar: 'directory',
     views: [{
       id: 'active',
       name: 'Active',
+      grammar: 'directory',
       filters: [{ field: 'status', operator: 'eq', value: 'active' }],
       sort: { field: '$createdAt', direction: 'desc' },
       columns: ['title', 'contact', 'status'],
@@ -109,13 +113,25 @@ function opportunityModule(): KernelModule {
       ],
     }),
     ports: [{ field: 'customer', target: 'directory.party', label: 'Customer' }],
-    views: [{
-      id: 'open',
-      name: 'Open pipeline',
-      filters: [{ field: 'status', operator: 'eq', value: 'open' }],
-      sort: { field: '$createdAt', direction: 'desc' },
-      columns: ['title', 'customer', 'source', 'status'],
-    }],
+    grammar: 'board',
+    views: [
+      {
+        id: 'overview',
+        name: 'Pipeline overview',
+        grammar: 'overview',
+        filters: [],
+        sort: { field: '$createdAt', direction: 'desc' },
+        columns: ['title', 'customer', 'source', 'status'],
+      },
+      {
+        id: 'pipeline',
+        name: 'Opportunity board',
+        grammar: 'board',
+        filters: [],
+        sort: { field: '$createdAt', direction: 'desc' },
+        columns: ['title', 'customer', 'source', 'status'],
+      },
+    ],
     layout: {
       sections: [
         { id: 'opportunity', name: 'Opportunity', fields: ['title', 'customer', 'source'] },
@@ -129,7 +145,7 @@ function projectModule(): KernelModule {
   return {
     id: 'work.project',
     defaultAlias: 'projects',
-    kind: 'queue',
+    grammar: 'ledger',
     definition: definitionSchema.parse({
       slug: 'project', name: 'Projects',
       description: 'Named workstreams that group issues. Start, complete and cancel are staged; a human apply commits them.',
@@ -153,6 +169,7 @@ function projectModule(): KernelModule {
     views: [{
       id: 'planned',
       name: 'Planned',
+      grammar: 'ledger',
       filters: [{ field: 'status', operator: 'eq', value: 'planned' }],
       sort: { field: '$createdAt', direction: 'desc' },
       columns: ['title', 'summary', 'status'],
@@ -170,6 +187,7 @@ function issueModule(): KernelModule {
   return {
     id: 'work.issue',
     defaultAlias: 'issues',
+    grammar: 'board',
     definition: definitionSchema.parse({
       slug: 'issue', name: 'Issues',
       description: 'Work items on a project, with optional assignee. Start, complete and cancel are staged; a human apply commits them.',
@@ -198,6 +216,7 @@ function issueModule(): KernelModule {
       {
         id: 'board',
         name: 'Issue board',
+        grammar: 'board',
         filters: [],
         sort: { field: '$createdAt', direction: 'desc' },
         columns: ['title', 'project', 'assignee', 'priority', 'status'],
@@ -205,6 +224,7 @@ function issueModule(): KernelModule {
       {
         id: 'backlog',
         name: 'Backlog',
+        grammar: 'ledger',
         filters: [{ field: 'status', operator: 'eq', value: 'backlog' }],
         sort: { field: '$createdAt', direction: 'desc' },
         columns: ['title', 'project', 'assignee', 'priority', 'status'],
@@ -212,6 +232,7 @@ function issueModule(): KernelModule {
       {
         id: 'started',
         name: 'Started',
+        grammar: 'ledger',
         filters: [{ field: 'status', operator: 'eq', value: 'started' }],
         sort: { field: '$createdAt', direction: 'desc' },
         columns: ['title', 'project', 'assignee', 'priority', 'status'],
@@ -226,21 +247,123 @@ function issueModule(): KernelModule {
   }
 }
 
-export const kernelModules: KernelModule[] = [requestModule(), opportunityModule(), partyModule(), projectModule(), issueModule()]
+function movementModule(): KernelModule {
+  return {
+    id: 'finance.movement',
+    defaultAlias: 'movements',
+    grammar: 'ledger',
+    definition: definitionSchema.parse({
+      slug: 'movement', name: 'Movements',
+      description: 'Inbound and outbound money movements. Post and fail are staged; a human apply commits them. Amount is unsigned cents plus a required direction.',
+      entity: {
+        name: 'movement', label: 'Movement',
+        fields: {
+          title: { label: 'Movement', type: 'string', min: 2, max: 120 },
+          amountCents: { label: 'Amount (USD cents)', type: 'integer', min: 1, max: 100000000 },
+          direction: { label: 'Direction', type: 'enum', options: ['inbound', 'outbound'] },
+          note: { label: 'Note', type: 'string', required: false, default: '', max: 500 },
+          status: { label: 'Status', type: 'enum', options: ['draft', 'posted', 'failed'], default: 'draft', editable: false },
+        },
+      },
+      settings: {},
+      reviewerRoles: ['owner'],
+      actions: [
+        { name: 'post', label: 'Post movement', description: 'Propose posting this draft movement. A human apply commits it.', roles: ['owner', 'operator'], input: {}, preconditions: [{ id: 'state', label: 'Movement is a draft', field: 'status', operator: 'eq', value: 'draft' }], policies: [], effects: { status: 'posted' } },
+        { name: 'fail', label: 'Mark failed', description: 'Propose marking this draft movement as failed. A human apply commits it.', roles: ['owner', 'operator'], input: {}, preconditions: [{ id: 'state', label: 'Movement is a draft', field: 'status', operator: 'eq', value: 'draft' }], policies: [], effects: { status: 'failed' } },
+      ],
+    }),
+    ports: [{ field: 'counterparty', target: 'directory.party', label: 'Counterparty' }],
+    views: [
+      {
+        id: 'ledger',
+        name: 'Movements',
+        grammar: 'ledger',
+        filters: [],
+        sort: { field: '$createdAt', direction: 'desc' },
+        columns: ['title', 'counterparty', 'amountCents', 'direction', 'status'],
+      },
+      {
+        id: 'overview',
+        name: 'Movement overview',
+        grammar: 'overview',
+        filters: [],
+        sort: { field: '$createdAt', direction: 'desc' },
+        columns: ['title', 'counterparty', 'amountCents', 'direction', 'status'],
+      },
+    ],
+    layout: {
+      sections: [
+        { id: 'movement', name: 'Movement', fields: ['title', 'counterparty', 'amountCents', 'direction', 'note'] },
+        { id: 'posting', name: 'Posting', fields: ['status'], when: { field: 'status', operator: 'neq', value: 'draft' } },
+      ],
+    },
+  }
+}
+
+function ticketModule(): KernelModule {
+  return {
+    id: 'support.ticket',
+    defaultAlias: 'tickets',
+    grammar: 'board',
+    definition: definitionSchema.parse({
+      slug: 'ticket', name: 'Tickets',
+      description: 'Support tickets from a requester. Wait, resolve, resume and reopen are staged; a human apply commits them. Tickets do not belong to a project.',
+      entity: {
+        name: 'ticket', label: 'Ticket',
+        fields: {
+          title: { label: 'Ticket', type: 'string', min: 2, max: 160 },
+          description: { label: 'Description', type: 'string', required: false, default: '', max: 2000 },
+          status: { label: 'Status', type: 'enum', options: ['open', 'waiting', 'resolved'], default: 'open', editable: false },
+        },
+      },
+      settings: {},
+      reviewerRoles: ['owner'],
+      actions: [
+        { name: 'wait', label: 'Wait on ticket', description: 'Propose waiting on this open ticket until the requester replies.', roles: ['owner', 'operator'], input: {}, preconditions: [{ id: 'state', label: 'Ticket is open', field: 'status', operator: 'eq', value: 'open' }], policies: [], effects: { status: 'waiting' } },
+        { name: 'resolve', label: 'Resolve ticket', description: 'Propose resolving this open ticket.', roles: ['owner', 'operator'], input: {}, preconditions: [{ id: 'state', label: 'Ticket is open', field: 'status', operator: 'eq', value: 'open' }], policies: [], effects: { status: 'resolved' } },
+        { name: 'resume', label: 'Resume ticket', description: 'Propose returning this waiting ticket to open.', roles: ['owner', 'operator'], input: {}, preconditions: [{ id: 'state', label: 'Ticket is waiting', field: 'status', operator: 'eq', value: 'waiting' }], policies: [], effects: { status: 'open' } },
+        { name: 'reopen', label: 'Reopen ticket', description: 'Propose reopening this resolved ticket.', roles: ['owner', 'operator'], input: {}, preconditions: [{ id: 'state', label: 'Ticket is resolved', field: 'status', operator: 'eq', value: 'resolved' }], policies: [], effects: { status: 'open' } },
+      ],
+    }),
+    ports: [{ field: 'requester', target: 'directory.party', label: 'Requester' }],
+    views: [{
+      id: 'board',
+      name: 'Ticket board',
+      grammar: 'board',
+      filters: [],
+      sort: { field: '$createdAt', direction: 'desc' },
+      columns: ['title', 'requester', 'status'],
+    }],
+    layout: {
+      sections: [
+        { id: 'ticket', name: 'Ticket', fields: ['title', 'description', 'requester'] },
+        { id: 'progress', name: 'Progress', fields: ['status'], when: { field: 'status', operator: 'neq', value: 'open' } },
+      ],
+    },
+  }
+}
+
+export const kernelModules: KernelModule[] = [requestModule(), opportunityModule(), partyModule(), projectModule(), issueModule(), movementModule(), ticketModule()]
 
 export function listModules() {
   return kernelModules
 }
 
-export function moduleKind(mod: KernelModule): ModuleKind {
-  return mod.kind ?? (mod.ports.length ? 'queue' : 'directory')
+export function moduleGrammar(mod: KernelModule): WorkingGrammar {
+  return mod.grammar ?? (mod.ports.length ? 'ledger' : 'directory')
+}
+
+export function viewGrammar(mod: KernelModule, view: ModuleView): WorkingGrammar {
+  return view.grammar ? resolveViewGrammar(view) : moduleGrammar(mod)
 }
 
 export function moduleSurfaces(mod: KernelModule) {
-  const kind = moduleKind(mod)
   return [
-    ...mod.views.map(view => ({ kind, view: view.id, name: view.name, blocks: composeSurface(kind).map(block => block.id) })),
-    ...(mod.layout ? [{ kind: 'detail' as const, name: `${mod.definition.entity.label} details`, blocks: composeSurface('detail').map(block => block.id) }] : []),
+    ...mod.views.map(view => {
+      const grammar = viewGrammar(mod, view)
+      return { grammar, view: view.id, name: view.name, blocks: composeSurface(grammar).map(block => block.id) }
+    }),
+    ...(mod.layout ? [{ grammar: 'detail' as const, name: `${mod.definition.entity.label} details`, blocks: composeSurface('detail').map(block => block.id) }] : []),
   ]
 }
 
@@ -252,7 +375,8 @@ export function catalogSnapshot() {
     defaultAlias: mod.defaultAlias,
     settings: mod.definition.settings,
     ports: mod.ports.map(port => ({ ...port, required: portRequired(port) })),
-    views: mod.views.map(view => ({ id: view.id, name: view.name })),
+    grammar: moduleGrammar(mod),
+    views: mod.views.map(view => ({ id: view.id, name: view.name, grammar: viewGrammar(mod, view) })),
     layout: Boolean(mod.layout),
     actions: mod.definition.actions.map(action => ({ name: action.name, label: action.label, description: action.description })),
     surfaces: moduleSurfaces(mod),

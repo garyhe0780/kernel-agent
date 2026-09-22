@@ -27,7 +27,10 @@ async function createRuntime(): Promise<Runtime> {
 
 export function getRuntime() {
   if (isCloudflareWorker()) return createRuntime()
-  cache.kernelRuntime ??= createRuntime()
+  cache.kernelRuntime ??= createRuntime().catch(error => {
+    cache.kernelRuntime = undefined
+    throw error
+  })
   return cache.kernelRuntime
 }
 

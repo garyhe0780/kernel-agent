@@ -19,10 +19,13 @@ import { Input } from './ui/input'
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Empty, Spinner, ToggleGroup } from './ui/surfaces'
 import { compileAssembly, sampleData, type Application, type Draft } from '@/kernel/application'
 import { assembleSelection } from '@/kernel/assembly'
+import { resolveViewGrammar } from '@/kernel/grammars'
 import type { CatalogSnapshot } from '@/kernel/modules'
 import { evaluate, validateFields } from '@/kernel/definition'
 import { request as defaultRequest, type BusinessRecord } from '@/lib/client'
 import { ModulePicker, type ModuleSelection } from './module-picker'
+import { RecordBoard } from './record-board'
+import { RecordOverview } from './record-overview'
 
 function selectionFrom(assembly?: Draft['assembly']): ModuleSelection {
   return {
@@ -199,7 +202,7 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
             <CardHeader><CardTitle>{entity.entity.label}</CardTitle><CardDescription>{entity.description}</CardDescription></CardHeader>
             <CardContent>
               <Button variant="outline" size="sm" onPress={() => setCreateOpen(true)}><Plus data-icon="inline-start" />Try new {entity.entity.label.toLowerCase()}</Button>
-              {records.length ? <div className="table-scroll"><table className="data-table"><thead><tr>{previewColumns.map(key => <th key={key}>{entity.entity.fields[key]?.label}</th>)}</tr></thead><tbody>{records.map(record => <tr key={record.id} aria-selected={selected?.id === record.id}>{previewColumns.map(key => <td key={key}>{key === 'title' ? <Button variant="link" onPress={() => setSelectedId(record.id)}>{String(record.data.title)}</Button> : entity.entity.fields[key]?.reference ? String(samples.find(sample => sample.id === record.data[key])?.data.title ?? '—') : key.endsWith('Cents') ? money(record.data[key]) : String(record.data[key] ?? '—')}</td>)}</tr>)}</tbody></table></div> : <Empty title="No example records match this view.">Choose All records or create a matching example to test this view.</Empty>}
+              {view && resolveViewGrammar(view) === 'overview' ? <RecordOverview definition={entity} records={records} /> : view && resolveViewGrammar(view) === 'board' ? <RecordBoard definition={entity} records={records} related={samples} selectedId={selected?.id} onSelect={setSelectedId} /> : records.length === 0 ? <Empty title="No example records match this view.">Choose All records or create a matching example to test this view.</Empty> : <div className="table-scroll"><table className="data-table" data-grammar={view ? resolveViewGrammar(view) : 'ledger'}><thead><tr>{previewColumns.map(key => <th key={key}>{entity.entity.fields[key]?.label}</th>)}</tr></thead><tbody>{records.map(record => <tr key={record.id} aria-selected={selected?.id === record.id}>{previewColumns.map(key => <td key={key}>{key === 'title' ? <Button variant="link" onPress={() => setSelectedId(record.id)}>{String(record.data.title)}</Button> : entity.entity.fields[key]?.reference ? String(samples.find(sample => sample.id === record.data[key])?.data.title ?? '—') : key.endsWith('Cents') ? money(record.data[key]) : String(record.data[key] ?? '—')}</td>)}</tr>)}</tbody></table></div>}
               {selected ? <RecordDetail key={selected.id} definition={entity} data={selected.data} records={samples} layout={definition.layouts.find(layout => layout.entity === entity.slug)} /> : null}
               <div className="actions">{entity.actions.map(item => <Button key={item.name} disabled={!selected} variant="outline" size="sm" onPress={() => setAction(item.name)}>Try {item.label.toLowerCase()}</Button>)}</div>
               {previewResult ? <Alert>{previewResult}</Alert> : null}

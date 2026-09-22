@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-16T14:20:06.510Z",
+  "generatedAt": "2026-09-20T15:50:00.000Z",
   "title": "Design System: Kernel",
   "extensions": {
     "colorMeta": {
@@ -563,7 +563,7 @@
       "name": "Application navigation",
       "kind": "nav",
       "refersTo": "nav-item-active",
-      "description": "Selected business section in the light application rail.",
+      "description": "Selected business section in the light application rail. Workspace Catalog lists generic blocks first, then business modules; wired blocks bind to a view or a record and are not a page canvas.",
       "html": "<nav class=\"ds-nav\" aria-label=\"Application\"><a class=\"ds-nav-item\" href=\"#requests\" aria-current=\"page\">Requests <span>12</span></a></nav>",
       "css": ".ds-nav{background:#f7f8fa;padding:12px}.ds-nav-item{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;display:flex;gap:10px;min-height:36px;padding:8px 10px;border-radius:6px;text-decoration:none;background:#e6ebf5;color:#28469f;font-weight:600}.ds-nav-item span{margin-left:auto}.ds-nav-item:hover{background:#e9ecf1;color:#20242b}.ds-nav-item:focus-visible{outline:2px solid #3659d9;outline-offset:2px;}"
     },

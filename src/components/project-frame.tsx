@@ -109,7 +109,7 @@ export function ProjectFrame({
             <Dialog className="app-switcher-dialog" aria-label="Switch application">
               <nav className="app-switcher-list" aria-label="Applications">
                 {snapshot.projects.map(project => <Link key={project.slug} to="/p/$projectSlug" params={{ projectSlug: project.slug }} aria-current={project.slug === slug ? 'page' : undefined} onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>{project.name}{project.demo ? <small>Demo</small> : null}</Link>)}
-                <Link className="app-switcher-all" aria-current={workspace ? 'page' : undefined} to="/" onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>Back to workspace</Link>
+                {owner ? <Link className="app-switcher-all" aria-current={workspace ? 'page' : undefined} to="/" onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>Back to workspace</Link> : null}
               </nav>
             </Dialog>
           </Popover>
@@ -121,7 +121,7 @@ export function ProjectFrame({
       <aside id="application-navigation" className="nav desk-nav" data-open={navOpen}>
         <div className="desk-nav-scroll">
         {settingsNavigation ? settingsNavigation(() => setNavOpen(false)) : <>
-        {!workspace ? <Link to="/" className="nav-item desk-back-link" onClick={() => setNavOpen(false)}><ArrowLeft /><span>Back to workspace</span></Link> : null}
+        {!workspace && owner ? <Link to="/" className="nav-item desk-back-link" onClick={() => setNavOpen(false)}><ArrowLeft /><span>Back to workspace</span></Link> : null}
         <nav className="nav-list" aria-label={workspace ? 'Workspace navigation' : `${name} navigation`}>
           {workspace ? <>
             <Link to="/" className="nav-item" activeOptions={{ exact: true }} aria-current={workspacePage === 'overview' ? 'page' : undefined} onClick={() => setNavOpen(false)}><House /><span>Overview</span></Link>
@@ -147,7 +147,7 @@ export function ProjectFrame({
                   </Dialog>
                 </Popover>
               </DialogTrigger> : null}
-            </div>{favoritesReady && !snapshot.projects.some(project => favorites.includes(project.slug)) ? <p className="favorites-hint">Pin an application with +</p> : null}</section> : null}
+            </div>{favoritesReady && !snapshot.projects.some(project => favorites.includes(project.slug)) ? <p className="favorites-hint">Pin an application to keep it here.</p> : null}</section> : null}
           </> : onEntityChange ? navigation.map(item => <div key={item.entity} className="desk-nav-section"><Button variant="ghost" className="nav-item" aria-current={!reviewing && !activeView && activeEntity === item.entity ? 'page' : undefined} onPress={() => { onEntityChange(item.entity); setNavOpen(false) }}><Table2 data-icon="inline-start" /><span>{item.label}</span><span className="nav-count">{snapshot.records.filter(r => r.capability === item.entity).length}</span></Button>{onViewChange ? snapshot.project?.presentation?.views.filter(view => view.entity === item.entity).map(view => <Button key={view.id} variant="ghost" className="nav-item desk-saved-view" aria-current={activeView === view.id ? 'page' : undefined} onPress={() => { onViewChange(view.id); setNavOpen(false) }}><span>{view.name}</span><span className="nav-count">{snapshot.records.filter(r => r.capability === view.entity && matchesView(r.data, view)).length}</span></Button>) : null}</div>) : <Link to="/p/$projectSlug" params={{ projectSlug: slug }} className="nav-item" aria-current={!configure ? 'page' : undefined}><Table2 /><span>{snapshot.project?.shell === 'site' ? 'Content' : snapshot.capability.definition.entity.label.endsWith('s') ? snapshot.capability.definition.entity.label : `${snapshot.capability.definition.entity.label}s`}</span></Link>}
           {onReview ? <Button variant="ghost" className="nav-item" aria-current={reviewing ? 'page' : undefined} onPress={() => { onReview(); setNavOpen(false) }}><Inbox data-icon="inline-start" /><span>{reviewLabel}</span><span className="nav-count">{pending}</span></Button> : null}
           {liveHref ? <a className="nav-item" href={liveHref}><SquareArrowOutUpRight />View live</a> : null}

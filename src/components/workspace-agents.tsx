@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import { useWorkspaceSnapshot } from './workspace-layout'
 import { Alert, Badge, Spinner } from './ui/surfaces'
 import { Button } from './ui/button'
@@ -7,6 +6,8 @@ import { Dialog } from './ui/dialog'
 import { Field, FieldError, FieldGroup, FieldLabel, Form } from './ui/form-field'
 import { Input } from './ui/input'
 import { date, request } from '@/lib/client'
+import { statusVariant } from '@/lib/project-ui'
+import { WorkspaceActionLink, WorkspaceEntityCard } from './workspace-entity-card'
 
 type Connection = { id: string; name: string; kind: 'operate' | 'construct'; projectSlug: string | null; projectName: string; expiresAt: string; actionCount: number; state: string }
 type Issued = { token: string; credential: { id: string; name: string } }
@@ -19,6 +20,7 @@ export function WorkspaceAgents() {
   const [notice, setNotice] = useState('')
   const [revision, setRevision] = useState(0)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [revokeTarget, setRevokeTarget] = useState<Connection>()
   const [secret, setSecret] = useState<Issued>()
   const secretField = useRef<HTMLInputElement>(null)
   const owner = snapshot.principal.role === 'owner'
@@ -50,7 +52,7 @@ export function WorkspaceAgents() {
       {secret ? <FieldGroup>
         <Field isReadOnly value={secret.token}><FieldLabel>Agent credential</FieldLabel><Input ref={secretField} autoComplete="off" /></Field>
         <Field isReadOnly value={mcpUrl}><FieldLabel>MCP URL</FieldLabel><Input /></Field>
-        <p>Use Streamable HTTP. Set <code>Authorization: Bearer</code> to the credential. Clients must support a configured bearer header; OAuth sign-in is not available. Call <code>list_blocks</code> and <code>list_modules</code>, then <code>save_draft</code> with a catalog assembly, then <code>publish_draft</code>. Publishing does not install sample records.</p>
+        <p>Use Streamable HTTP. Set <code>Authorization: Bearer</code> to the credential. Clients must support a configured bearer header; OAuth sign-in is not available. Call <code>list_patterns</code> and prefer <code>save_draft</code> with a pattern id, then <code>publish_draft</code>. Publishing does not install sample records.</p>
         <div className="builder-actions">
           <Button variant="outline" onPress={() => void run(async () => { await navigator.clipboard.writeText(secret.token); setNotice('Credential copied.') })}>Copy credential</Button>
           <Button variant="outline" disabled={busy} onPress={() => void run(async () => {
@@ -83,12 +85,42 @@ export function WorkspaceAgents() {
       {owner ? <>
         {error ? <Alert variant="danger">{error}</Alert> : null}
         {notice ? <Alert>{notice}</Alert> : null}
-        <section className="stack" aria-label="Agent connections"><h2>Connected agents</h2><p className="muted">Builder credentials create applications in this workspace. Application credentials can read one application and propose only its permitted actions. Pending proposals appear in Inbox. Status reflects the last refresh.</p>
+        <section className="stack" aria-label="Agent connections"><h2>Connected agents</h2><p className="muted workspace-section-lede">Builder credentials create applications in this workspace. Application credentials can read one application and propose only its permitted actions. Pending proposals appear in Inbox. Status reflects the last refresh.</p>
           {!busy && !error && !connections.length ? <p>No external agents are connected yet. Connect a builder to create applications from your MCP client, or grant an application credential below.</p> : null}
-          {connections.map(item => <article className="inbox-row" key={item.id}><div><h3>{item.name}</h3><p>{item.kind === 'construct' ? 'Creates applications over MCP' : `${item.projectName} · ${item.actionCount} permitted ${item.actionCount === 1 ? 'action' : 'actions'}`}</p><p className="muted">Expires {date(item.expiresAt)}</p><Badge variant={item.state === 'Active' ? 'success' : 'warning'}>{item.state}</Badge></div><div className="builder-actions">{item.projectSlug ? <Link className="inbox-open" to="/p/$projectSlug/build" params={{ projectSlug: item.projectSlug }}>Manage in application</Link> : null}{item.state !== 'Revoked' ? <Button variant="outline" disabled={busy} onPress={() => void run(async () => { await request('/api/kernel', { type: 'revoke_agent_credential', id: item.id }); if (secret?.credential.id === item.id) setSecret(undefined); setRevision(value => value + 1); setNotice(`${item.name} access revoked.`) })}>Revoke {item.name}</Button> : null}</div></article>)}
+          {connections.map(item => <WorkspaceEntityCard
+            key={item.id}
+            title={item.name}
+            description={item.kind === 'construct' ? 'Creates applications over MCP' : `${item.projectName} · ${item.actionCount} permitted ${item.actionCount === 1 ? 'action' : 'actions'}`}
+            badge={<Badge variant={statusVariant(item.state)}>{item.state}</Badge>}
+            actions={<>
+              {item.projectSlug ? <WorkspaceActionLink to="/p/$projectSlug/build" params={{ projectSlug: item.projectSlug }}>Manage in application</WorkspaceActionLink> : null}
+              {item.state !== 'Revoked' ? <Button variant="danger" disabled={busy} onPress={() => setRevokeTarget(item)}>Revoke {item.name}</Button> : null}
+            </>}
+          >
+            <p className="muted">Expires {date(item.expiresAt)}</p>
+          </WorkspaceEntityCard>)}
         </section>
-        <section className="stack" aria-label="Application agent access"><h2>Application access</h2><p className="muted">Operate credentials belong to one published application. Open Agents in its configuration to choose actions.</p>{snapshot.projects.map(project => <Link className="overview-application-row" key={project.slug} to="/p/$projectSlug/build" params={{ projectSlug: project.slug }}><strong>{project.name}</strong><span>Configure access</span></Link>)}{!snapshot.projects.length ? <p>Publish an application before granting record access. Builder credentials do not need a published application.</p> : null}</section>
+        <section className="stack" aria-label="Application agent access"><h2>Application access</h2><p className="muted workspace-section-lede">Operate credentials belong to one published application. Open Agents in its configuration to choose actions.</p>
+          {snapshot.projects.map(project => <WorkspaceEntityCard key={project.slug} title={project.name} actions={<WorkspaceActionLink to="/p/$projectSlug/build" params={{ projectSlug: project.slug }}>Configure access</WorkspaceActionLink>} />)}
+          {!snapshot.projects.length ? <p>Publish an application before granting record access. Builder credentials do not need a published application.</p> : null}
+        </section>
       </> : <Alert>Only a workspace owner can manage agent access.</Alert>}
     </div>
+    <Dialog open={Boolean(revokeTarget)} onOpenChange={open => { if (!open) setRevokeTarget(undefined) }} title={revokeTarget ? `Revoke ${revokeTarget.name}?` : 'Revoke access'} description="This credential can no longer be used. Pending proposals from it cannot be applied. You can still reject them.">
+      <div className="dialog-actions">
+        <Button variant="outline" onPress={() => setRevokeTarget(undefined)}>Keep access</Button>
+        <Button variant="destructive" disabled={busy} onPress={() => {
+          const item = revokeTarget
+          if (!item) return
+          void run(async () => {
+            await request('/api/kernel', { type: 'revoke_agent_credential', id: item.id })
+            if (secret?.credential.id === item.id) setSecret(undefined)
+            setRevokeTarget(undefined)
+            setRevision(value => value + 1)
+            setNotice(`${item.name} access revoked.`)
+          })
+        }}>Revoke {revokeTarget?.name}</Button>
+      </div>
+    </Dialog>
   </main>
 }

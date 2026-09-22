@@ -1,6 +1,7 @@
 import { validateApplication } from './application'
 import { applicationPresentation, type ApplicationPresentation } from './application-views'
 import { isPurchasingDemo } from './purchasing-demo'
+import { patternById } from './patterns'
 export type ShellKind = 'workbench' | 'site'
 
 export type ProjectTemplate = {
@@ -20,6 +21,7 @@ export type ProjectSnapshot = {
   name: string
   description: string
   shell: ShellKind
+  pattern: string | null
   packages: string[]
 }
 
@@ -114,7 +116,13 @@ export function asStringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string')
 }
 
-export function toProjectSnapshot(row: { slug: string; name: string; shell: string; packages: unknown; description?: string; version?: number; definition?: unknown }): ProjectSnapshot {
+export function patternIdFromAssembly(value: unknown) {
+  if (!value || typeof value !== 'object' || !('pattern' in value)) return null
+  const id = (value as { pattern?: unknown }).pattern
+  return typeof id === 'string' && patternById(id) ? id : null
+}
+
+export function toProjectSnapshot(row: { slug: string; name: string; shell: string; packages: unknown; description?: string; version?: number; definition?: unknown; assembly?: unknown }): ProjectSnapshot {
   const template = projectTemplate(row.slug)
   return {
     version: row.version ?? 1,
@@ -124,6 +132,7 @@ export function toProjectSnapshot(row: { slug: string; name: string; shell: stri
     name: row.name,
     description: row.description || template?.description || '',
     shell: row.shell === 'site' ? 'site' : 'workbench',
+    pattern: patternIdFromAssembly(row.assembly),
     packages: asStringList(row.packages),
     ...(row.definition ? { presentation: (() => {
       const presentation = applicationPresentation(validateApplication(row.definition))

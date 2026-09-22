@@ -35,7 +35,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('edit_project'), project: z.string().min(1) }).strict(),
   z.object({ type: z.literal('preview_migration'), id: z.string(), expectedVersion: z.number().int().positive() }).strict(),
   z.object({ type: z.literal('example') }).strict(),
-  z.object({ type: z.literal('save_draft'), id: z.string().optional(), expectedVersion: z.number().int().positive().optional(), brief: z.string().max(4000), definition: z.unknown().optional(), assembly: z.unknown().optional() }).strict(),
+  z.object({ type: z.literal('save_draft'), id: z.string().optional(), expectedVersion: z.number().int().positive().optional(), brief: z.string().max(4000), definition: z.unknown().optional(), assembly: z.unknown().optional(), pattern: z.string().min(1).max(80).optional() }).strict(),
   z.object({ type: z.literal('publish_draft'), id: z.string(), expectedVersion: z.number().int().positive(), previewToken: z.string().optional() }).strict(),
   z.object({ type: z.literal('operate'), project: z.string().min(1), instruction: z.string().trim().min(5).max(2000), idempotencyKey: z.string().min(8).max(100) }).strict(),
   z.object({ type: z.literal('create'), capability: z.string().min(1), data: z.record(z.string(), z.unknown()) }).strict(),
@@ -100,6 +100,8 @@ export async function handleKernel(request: Request, agent = false) {
       if (!agent && new URL(request.url).searchParams.has('plans')) return response(await kernel.listPlans(p))
       if (!agent && new URL(request.url).searchParams.has('modules')) return response(await kernel.listModules(p))
       if (!agent && new URL(request.url).searchParams.has('blocks')) return response(await kernel.listBlocks(p))
+      if (!agent && new URL(request.url).searchParams.has('grammars')) return response(await kernel.listGrammars(p))
+      if (!agent && new URL(request.url).searchParams.has('patterns')) return response(await kernel.listPatterns(p))
       if (!agent && new URL(request.url).searchParams.has('drafts')) return response({ drafts: await kernel.listDrafts(p), model: modelStatus() })
       if (!agent && new URL(request.url).searchParams.has('history')) return response(await kernel.projectHistory(p, new URL(request.url).searchParams.get('history')!))
       const project = new URL(request.url).searchParams.get('project') ?? undefined

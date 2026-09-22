@@ -8,6 +8,9 @@ import { compileAssembly, validateApplication } from './application'
 import { validateAssembly, type Assembly } from './assembly'
 import { catalogSnapshot } from './modules'
 import { blockCatalog } from './blocks'
+import { grammarCatalog } from './grammars'
+import { patternCatalog } from './patterns'
+import { assemblePattern } from './compile'
 import { canonical, namespaceApplication, planMigration, type MigrationPreview } from './migration'
 import { DEMO_PURCHASING_SLUG, purchasingDemoApplication, purchasingDemoAssembly, purchasingDemoRequests, purchasingDemoSuppliers } from './purchasing-demo'
 
@@ -41,12 +44,19 @@ export class Kernel {
     return { ...row, definition: validateApplication(row.definition), assembly: row.assembly == null ? null : validateAssembly(row.assembly) }
   }
 
-  private compileSave(command: { definition?: unknown; assembly?: unknown }): { definition: ReturnType<typeof validateApplication>; assembly: Assembly | null } {
+  private compileSave(command: { definition?: unknown; assembly?: unknown; pattern?: unknown }): { definition: ReturnType<typeof validateApplication>; assembly: Assembly | null } {
+    if (typeof command.pattern === 'string' && command.pattern.trim()) {
+      try {
+        const assembly = assemblePattern(command.pattern.trim())
+        return { assembly, definition: compileAssembly(assembly) }
+      }
+      catch (error) { throw error instanceof KernelError ? error : new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Unknown pattern.', 422) }
+    }
     if (command.assembly !== undefined && command.assembly !== null) {
       try { return { assembly: validateAssembly(command.assembly), definition: compileAssembly(command.assembly) } }
       catch (error) { throw error instanceof KernelError ? error : new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid assembly.', 422) }
     }
-    if (command.definition === undefined) throw new KernelError('INVALID_INPUT', 'Provide an assembly of catalog modules, or a definition.', 400)
+    if (command.definition === undefined) throw new KernelError('INVALID_INPUT', 'Provide a catalog pattern, an assembly of catalog modules, or a definition.', 400)
     return { assembly: null, definition: validateApplication(command.definition) }
   }
 
@@ -527,6 +537,22 @@ export class Kernel {
     })
   }
 
+  async listGrammars(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can list catalog grammars.')
+      return grammarCatalog()
+    })
+  }
+
+  async listPatterns(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'construct')
+      this.assertBuilder(p, 'Only owners can list catalog patterns.')
+      return patternCatalog()
+    })
+  }
+
   async listApplications(p: Principal) {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p, 'construct')
@@ -556,7 +582,7 @@ export class Kernel {
     })
   }
 
-  async saveDraft(p: Principal, command: { brief: string; source: string; definition?: unknown; assembly?: unknown; id?: string; expectedVersion?: number }) {
+  async saveDraft(p: Principal, command: { brief: string; source: string; definition?: unknown; assembly?: unknown; pattern?: unknown; id?: string; expectedVersion?: number }) {
     const { definition, assembly } = this.compileSave(command)
     if (command.brief.length > 4000) throw new KernelError('INVALID_INPUT', 'Keep the description under 4,000 characters.')
     return this.db.$transaction(async tx => {

@@ -1,10 +1,33 @@
 import { z } from 'zod'
-import { moduleById, moduleKind, portRequired } from './modules'
+import { moduleById, portRequired, viewGrammar } from './modules'
+import { grammarFromLegacyKind, grammarIds, isGrammarId } from './grammars'
+import { patternById } from './patterns'
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
 const linkFrom = z.string().regex(/^[a-z][a-z0-9_]{0,39}\.[a-z][a-zA-Z0-9_]{0,49}$/)
 
+const surfaceSchema = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const surface = value as Record<string, unknown>
+  if (typeof surface.grammar === 'string') {
+    const { kind: _kind, ...rest } = surface
+    return rest
+  }
+  if (typeof surface.kind === 'string') {
+    const { kind, ...rest } = surface
+    return { ...rest, grammar: grammarFromLegacyKind(kind, typeof surface.view === 'string' ? surface.view : undefined) }
+  }
+  return surface
+}, z.object({
+  grammar: z.enum(grammarIds),
+  of: identifier,
+  view: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/).optional(),
+  label: z.string().trim().min(2).max(60).optional(),
+  name: z.string().trim().min(2).max(60).optional(),
+}).strict())
+
 export const assemblySchema = z.object({
+  pattern: z.string().min(1).max(80).optional(),
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().min(5).max(500),
   assumptions: z.array(z.string().max(500)).max(12).default([]),
@@ -16,13 +39,7 @@ export const assemblySchema = z.object({
     settings: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   }).strict()).min(1).max(8),
   links: z.array(z.object({ from: linkFrom, to: identifier }).strict()).default([]),
-  surfaces: z.array(z.object({
-    kind: z.enum(['queue', 'directory', 'detail']),
-    of: identifier,
-    view: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/).optional(),
-    label: z.string().trim().min(2).max(60).optional(),
-    name: z.string().trim().min(2).max(60).optional(),
-  }).strict()).max(24).default([]),
+  surfaces: z.array(surfaceSchema).max(24).default([]),
   startView: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/).nullable().optional(),
 }).strict()
 
@@ -30,6 +47,7 @@ export type Assembly = z.infer<typeof assemblySchema>
 
 export function validateAssembly(raw: unknown): Assembly {
   const assembly = assemblySchema.parse(raw)
+  if (assembly.pattern && !patternById(assembly.pattern)) throw new Error(`Unknown pattern: ${assembly.pattern}`)
   const aliases = new Set<string>()
   const instances = assembly.modules.map(item => {
     if (aliases.has(item.as)) throw new Error('Module aliases must be unique.')
@@ -60,13 +78,14 @@ export function validateAssembly(raw: unknown): Assembly {
   }
   const viewIds = new Set<string>()
   for (const surface of assembly.surfaces) {
+    if (!isGrammarId(surface.grammar)) throw new Error(`Unknown grammar: ${surface.grammar}.`)
     const instance = byAlias.get(surface.of)
     if (!instance) throw new Error('Surface refers to an unknown module instance.')
-    if (surface.kind === 'detail') {
+    if (surface.grammar === 'detail') {
       if (!instance.mod.layout) throw new Error('Layout surface requires a module with a record layout.')
       continue
     }
-    if (!surface.view) throw new Error(`Surface ${surface.kind} needs a view from ${instance.mod.id}.`)
+    if (!surface.view) throw new Error(`Surface ${surface.grammar} needs a view from ${instance.mod.id}.`)
     const view = instance.mod.views.find(item => item.id === surface.view)
     if (!view) throw new Error(`View ${surface.view} is not provided by ${instance.mod.id}.`)
     const id = surface.view
@@ -105,6 +124,10 @@ export function selectionForModules(ids: string[]) {
   }
 }
 
+function homeView(surfaces: Assembly['surfaces']) {
+  return surfaces.find(surface => surface.view && surface.grammar !== 'detail')?.view ?? null
+}
+
 export function assembleSelection(input: {
   name: string
   description: string
@@ -134,13 +157,10 @@ export function assembleSelection(input: {
   })
   const surfaces = modules.flatMap(item => {
     const mod = moduleById(item.use)!
-    const kind = moduleKind(mod)
     return [
-      ...mod.views.map(view => ({ kind, of: item.as, view: view.id, name: view.name })),
-      ...(mod.layout ? [{ kind: 'detail' as const, of: item.as }] : []),
+      ...mod.views.map(view => ({ grammar: viewGrammar(mod, view), of: item.as, view: view.id, name: view.name })),
+      ...(mod.layout ? [{ grammar: 'detail' as const, of: item.as }] : []),
     ]
   })
-  const queuedViews = surfaces.flatMap(surface => surface.kind === 'queue' ? [surface.view] : [])
-  const startView = queuedViews[0] ?? surfaces.flatMap(surface => surface.kind === 'detail' ? [] : [surface.view])[0] ?? null
-  return validateAssembly({ name: input.name, description: input.description, assumptions: input.assumptions ?? [], modules, links, surfaces, startView })
+  return validateAssembly({ name: input.name, description: input.description, assumptions: input.assumptions ?? [], modules, links, surfaces, startView: homeView(surfaces) })
 }

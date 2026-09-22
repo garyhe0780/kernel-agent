@@ -1,10 +1,12 @@
 import { z } from 'zod'
 import type { RecordLayout } from './application-layouts'
 import type { Definition, RecordData } from './definition'
+import { workingGrammars } from './grammars'
 
 const id = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
 export const savedViewSchema = z.object({
   id, name: z.string().trim().min(2).max(60), entity: id,
+  grammar: z.enum(workingGrammars).optional(),
   filters: z.array(z.object({ field: z.string().min(1).max(50), operator: z.enum(['eq', 'lte', 'gte']), value: z.union([z.string().max(500), z.number().finite(), z.boolean()]) }).strict()).max(6).default([]),
   sort: z.object({ field: z.string().min(1).max(50), direction: z.enum(['asc', 'desc']) }).strict().default({ field: '$createdAt', direction: 'desc' }),
   columns: z.array(z.string().min(1).max(50)).max(8).default([]),

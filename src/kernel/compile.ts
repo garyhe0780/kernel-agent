@@ -2,84 +2,46 @@ import { applySettings } from './definition'
 import { validateAssembly, type Assembly } from './assembly'
 import { composeSurface } from './blocks'
 import { moduleById, portRequired } from './modules'
+import { patternById, type KernelPattern } from './patterns'
+import { isWorkingGrammar } from './grammars'
+
+function assemblyFrom(pattern: KernelPattern): Assembly {
+  return validateAssembly({
+    pattern: pattern.id,
+    name: pattern.name,
+    description: pattern.description,
+    assumptions: pattern.assumptions,
+    modules: pattern.modules,
+    links: pattern.links,
+    surfaces: pattern.surfaces,
+    startView: pattern.home,
+  })
+}
+
+export function assemblePattern(id: string): Assembly {
+  const pattern = patternById(id)
+  if (!pattern) throw new Error(`Unknown pattern: ${id}`)
+  return assemblyFrom(pattern)
+}
 
 export function purchasingAssembly(): Assembly {
-  return {
-    name: 'Team purchasing',
-    description: 'Manage suppliers and purchase requests, with a reviewed decision for every purchase.',
-    assumptions: [
-      'All purchase decisions require owner review.',
-      'Requests above the configured approval ceiling are blocked; this is a hard limit, not an escalation.',
-      'Supplier verification is recorded on each request; it is not inferred from the supplier.',
-      'Example records are for preview only and will not be published.',
-    ],
-    modules: [
-      { use: 'purchasing.request', as: 'requests', settings: { approvalLimitCents: 1000000, requireVerifiedSupplier: true } },
-      { use: 'directory.party', as: 'suppliers', name: 'Suppliers', label: 'Supplier' },
-    ],
-    links: [{ from: 'requests.supplier', to: 'suppliers' }],
-    surfaces: [
-      { kind: 'queue', of: 'requests', view: 'awaiting_decision', label: 'Purchase requests' },
-      { kind: 'directory', of: 'suppliers', view: 'active', label: 'Suppliers', name: 'Active suppliers' },
-      { kind: 'detail', of: 'requests' },
-    ],
-    startView: 'awaiting_decision',
-  }
+  return assemblePattern('purchasing')
 }
 
 export function salesAssembly(): Assembly {
-  return {
-    name: 'Team sales',
-    description: 'Track customers and sales opportunities, with a reviewed conversion for every deal.',
-    assumptions: [
-      'Conversion and lost decisions require owner review.',
-      'Customer details live on the directory record; the opportunity stores the selected customer.',
-      'Example records are for preview only and will not be published.',
-    ],
-    modules: [
-      { use: 'sales.opportunity', as: 'opportunities' },
-      { use: 'directory.party', as: 'customers', name: 'Customers', label: 'Customer' },
-    ],
-    links: [{ from: 'opportunities.customer', to: 'customers' }],
-    surfaces: [
-      { kind: 'queue', of: 'opportunities', view: 'open', label: 'Opportunities' },
-      { kind: 'directory', of: 'customers', view: 'active', label: 'Customers', name: 'Active customers' },
-      { kind: 'detail', of: 'opportunities' },
-    ],
-    startView: 'open',
-  }
+  return assemblePattern('crm')
 }
 
 export function linearAssembly(): Assembly {
-  return {
-    name: 'Team issues',
-    description: 'Track issues across projects, with an optional assignee on each issue.',
-    assumptions: [
-      'Every issue belongs to a project.',
-      'Assignees are optional; unassigned issues stay in the project queue.',
-      'Start, complete and cancel are staged; a human apply commits them.',
-      'Example records are for preview only and will not be published.',
-    ],
-    modules: [
-      { use: 'work.issue', as: 'issues' },
-      { use: 'work.project', as: 'projects' },
-      { use: 'directory.party', as: 'people', name: 'People', label: 'Person' },
-    ],
-    links: [
-      { from: 'issues.project', to: 'projects' },
-      { from: 'issues.assignee', to: 'people' },
-    ],
-    surfaces: [
-      { kind: 'queue', of: 'issues', view: 'board', label: 'Issues' },
-      { kind: 'queue', of: 'issues', view: 'backlog', name: 'Backlog' },
-      { kind: 'queue', of: 'issues', view: 'started', name: 'Started' },
-      { kind: 'queue', of: 'projects', view: 'planned', label: 'Projects' },
-      { kind: 'directory', of: 'people', view: 'active', label: 'People', name: 'Active people' },
-      { kind: 'detail', of: 'issues' },
-      { kind: 'detail', of: 'projects' },
-    ],
-    startView: 'board',
-  }
+  return assemblePattern('issues')
+}
+
+export function paymentsAssembly(): Assembly {
+  return assemblePattern('payments')
+}
+
+export function supportAssembly(): Assembly {
+  return assemblePattern('support')
 }
 
 export function materializeAssembly(raw: unknown) {
@@ -106,15 +68,21 @@ export function materializeAssembly(raw: unknown) {
   const entityByAlias = new Map(entities.map(entity => [entity.slug, entity]))
   const knownFields = (alias: string) => entityByAlias.get(alias)!.entity.fields
   const views = assembly.surfaces.flatMap(surface => {
-    if (surface.kind === 'detail' || !surface.view) return []
-    composeSurface(surface.kind)
+    if (surface.grammar === 'detail' || !surface.view) return []
+    composeSurface(surface.grammar)
     const view = byAlias.get(surface.of)!.views.find(entry => entry.id === surface.view)!
     const fields = knownFields(surface.of)
-    return [{ ...view, name: surface.name ?? view.name, entity: surface.of, columns: view.columns.filter(key => Object.hasOwn(fields, key)) }]
+    return [{
+      ...view,
+      name: surface.name ?? view.name,
+      entity: surface.of,
+      grammar: isWorkingGrammar(surface.grammar) ? surface.grammar : view.grammar,
+      columns: view.columns.filter(key => Object.hasOwn(fields, key)),
+    }]
   })
   const layouts = assembly.surfaces.flatMap(surface => {
-    if (surface.kind !== 'detail') return []
-    composeSurface(surface.kind)
+    if (surface.grammar !== 'detail') return []
+    composeSurface(surface.grammar)
     const fields = knownFields(surface.of)
     const layout = byAlias.get(surface.of)!.layout!
     return [{
