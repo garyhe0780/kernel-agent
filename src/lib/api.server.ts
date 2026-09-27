@@ -20,7 +20,9 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('revoke_invitation'), id: z.string().min(1) }).strict(),
   z.object({ type: z.literal('preview_invitation'), token: z.string().min(32).max(200) }).strict(),
   z.object({ type: z.literal('accept_invitation'), token: z.string().min(32).max(200) }).strict(),
-  z.object({ type: z.literal('update_member'), userId: z.string().min(1), expectedRole: z.enum(['owner', 'operator']), role: z.enum(['owner', 'operator', 'remove']) }).strict(),
+  z.object({ type: z.literal('invite_application_user'), project: z.string().min(1).max(80), email: z.string().email().max(254) }).strict(),
+  z.object({ type: z.literal('accept_application_invite'), token: z.string().min(32).max(200) }).strict(),
+  z.object({ type: z.literal('update_member'), userId: z.string().min(1), expectedRole: z.enum(['owner', 'operator', 'application']), role: z.enum(['owner', 'operator', 'remove']) }).strict(),
   z.object({ type: z.literal('test_model_connection') }).strict(),
   z.object({ type: z.literal('create_workspace'), name: z.string().trim().min(1).max(80) }).strict(),
   z.object({ type: z.literal('install_purchasing_demo') }).strict(),
@@ -75,14 +77,13 @@ async function queuedBuild(job: Awaited<ReturnType<BuildJobs['start']>>) {
 
 export async function handleKernel(request: Request, agent = false) {
   try {
-    const { kernel, buildJobs, agentAccess } = await getRuntime()
+    const { kernel, buildJobs, agentAccess, auth } = await getRuntime()
     if (request.headers.has('authorization')) {
       if (agent) return handleAgentCredential(request, agentAccess, kernel)
       throw new KernelError('FORBIDDEN', 'Agent credentials are accepted only at /api/agent.', 403)
     }
-    if (request.method === 'POST') checkOrigin(request)
-    const p = await principal(request, agent ? 'agent' : 'human')
     if (request.method === 'GET') {
+    const p = await principal(request, agent ? 'agent' : 'human')
       const query = new URL(request.url).searchParams
       if (!agent && query.has('buildJob')) {
         const id = query.get('buildJob')!
@@ -108,9 +109,16 @@ export async function handleKernel(request: Request, agent = false) {
       const state = await kernel.snapshot(p, project)
       return response(agent ? { tools: state.tools, records: state.records, capabilities: state.capabilities.map(cap => ({ slug: cap.slug, version: cap.version })), project: state.project?.slug, mode: 'Authenticated tools; proposals require human review.' } : { ...state, model: { configured: modelStatus().configured } })
     }
+    checkOrigin(request)
     const text = await request.text()
     if (text.length > 128000) throw new KernelError('TOO_LARGE', 'Request exceeds the size limit.', 413)
     const command = commandSchema.parse(JSON.parse(text))
+    if (command.type === 'accept_application_invite') {
+      const session = await auth.api.getSession({ headers: request.headers })
+      if (!session) throw new KernelError('UNAUTHENTICATED', 'Sign in to join this application.', 401)
+      return response(await kernel.acceptApplicationInvite({ id: session.user.id, name: session.user.name, email: session.user.email }, command.token))
+    }
+    const p = await principal(request, agent ? 'agent' : 'human')
     if (agent && !commandAllows(command.type, 'operate-agent')) throw new KernelError('FORBIDDEN', 'The agent endpoint can only stage proposals.', 403)
     switch (command.type) {
       case 'retry_build': return queuedBuild(await buildJobs.retry(p, command.id))
@@ -118,6 +126,7 @@ export async function handleKernel(request: Request, agent = false) {
       case 'revoke_invitation': return response(await kernel.revokeInvitation(p, command.id))
       case 'preview_invitation': return response(await kernel.previewInvitation(p, command.token))
       case 'accept_invitation': return response(await kernel.acceptInvitation(p, command.token))
+      case 'invite_application_user': return response(await kernel.inviteApplicationUser(p, command.project, command.email))
       case 'update_member': return response(await kernel.updateMember(p, command.userId, command.expectedRole, command.role))
       case 'test_model_connection': { await kernel.workspaceSettings(p); return response(await testModelConnection()) }
       case 'create_workspace': return response(await kernel.createWorkspace(p, command.name))

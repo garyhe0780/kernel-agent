@@ -14,6 +14,8 @@ export const kernelCommands = {
   revoke_invitation: { layer: 'core', family: 'identity', actors: ['human'] },
   preview_invitation: { layer: 'core', family: 'identity', actors: ['human'] },
   accept_invitation: { layer: 'core', family: 'identity', actors: ['human'] },
+  invite_application_user: { layer: 'core', family: 'identity', actors: ['human'] },
+  accept_application_invite: { layer: 'core', family: 'identity', actors: ['human'] },
   update_member: { layer: 'core', family: 'identity', actors: ['human'] },
   create_workspace: { layer: 'core', family: 'identity', actors: ['human'] },
   rename_workspace: { layer: 'core', family: 'identity', actors: ['human'] },

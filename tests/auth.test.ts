@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createAuth } from '../src/lib/auth.server'
@@ -54,6 +55,18 @@ test('HTTP signup requires the configured invitation code and leaves sign-in ope
     await db.session.deleteMany({ where: { user: { email: account.email } } })
     const signedIn = await post('/sign-in/email', { email: account.email, password: account.password })
     assert.equal(signedIn.status, 200)
+
+    delete process.env.KERNEL_SIGNUP_CODE
+    const invitedEmail = `app-${Date.now()}@example.test`
+    const token = 'b'.repeat(64)
+    const workspace = await db.workspace.create({ data: { name: 'Invite workspace' } })
+    const project = await db.project.create({ data: { workspaceId: workspace.id, slug: 'linear', name: 'Linear', shell: 'workbench', packages: ['work.issue'] } })
+    await db.projectInvitation.create({ data: { projectId: project.id, email: invitedEmail, createdBy: 'owner', tokenHash: createHash('sha256').update(token).digest('hex'), expiresAt: new Date(Date.now() + 86400000) } })
+    const mismatched = await post('/sign-up/email', { name: 'Wrong', email: `other-${Date.now()}@example.test`, password: 'password-ok', applicationInvite: token })
+    assert.equal(mismatched.status, 403)
+    const joined = await post('/sign-up/email', { name: 'App User', email: invitedEmail, password: 'password-ok', applicationInvite: token })
+    assert.equal(joined.status, 200)
+    assert.ok(await db.user.findUnique({ where: { email: invitedEmail } }))
   } finally {
     if (previous === undefined) delete process.env.KERNEL_SIGNUP_CODE
     else process.env.KERNEL_SIGNUP_CODE = previous

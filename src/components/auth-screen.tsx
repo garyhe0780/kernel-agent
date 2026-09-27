@@ -10,7 +10,7 @@ import { Alert, Badge, Spinner } from './ui/surfaces'
 
 type AuthMode = 'login' | 'signup'
 
-export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invitationCode?: string }) {
+export function AuthScreen({ mode, invitationCode = '', applicationInvite = '' }: { mode: AuthMode; invitationCode?: string; applicationInvite?: string }) {
   const navigate = useNavigate({ from: '/login' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -18,7 +18,7 @@ export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invi
 
   function setMode(next: AuthMode) {
     setError('')
-    void navigate({ search: invitationCode ? { mode: next, code: invitationCode } : { mode: next } })
+    void navigate({ search: { mode: next, ...(applicationInvite ? { app: applicationInvite } : {}), ...(invitationCode ? { code: invitationCode } : {}) } })
   }
 
   return (
@@ -60,9 +60,11 @@ export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invi
           <div className="feature-icon">
             <Workflow />
           </div>
-          <h2>{signup ? 'Create your workspace' : 'Welcome back'}</h2>
+          <h2>{applicationInvite ? (signup ? 'Join this application' : 'Sign in to this application') : signup ? 'Create your workspace' : 'Welcome back'}</h2>
           <p className="muted">
-            {signup
+            {applicationInvite
+              ? 'Use the email address that was invited. You do not need a workspace invitation code.'
+              : signup
               ? 'Kernel is invite-only. Enter the invitation code you were given, then create a private workspace.'
               : 'Sign in to continue working with your team and agents.'}
           </p>
@@ -81,10 +83,11 @@ export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invi
                   ? await authClient.signUp.email({
                       ...credentials,
                       name: String(values.get('name')),
-                      invitationCode: String(values.get('invitationCode')),
+                      ...(applicationInvite ? { applicationInvite } : { invitationCode: String(values.get('invitationCode')) }),
                     } as Parameters<typeof authClient.signUp.email>[0])
                   : await authClient.signIn.email(credentials)
                 if (result.error) throw new Error(result.error.message || 'Unable to sign in.')
+                if (applicationInvite) return
                 await navigate({ to: pendingInvitation() ? '/settings' : '/' })
               } catch (caught) {
                 setError(caught instanceof Error ? caught.message : 'Unable to sign in.')
@@ -94,7 +97,7 @@ export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invi
             }}
           >
             <FieldGroup>
-              {signup ? (
+              {signup && !applicationInvite ? (
                 <Field name="invitationCode" isRequired minLength={4} maxLength={80} defaultValue={invitationCode} autoFocus={!invitationCode}>
                   <FieldLabel>Invitation code</FieldLabel>
                   <Input placeholder="Enter your invitation code" autoComplete="off" autoCapitalize="none" spellCheck="false" />
@@ -102,7 +105,7 @@ export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invi
                 </Field>
               ) : null}
               {signup ? (
-                <Field name="name" isRequired minLength={2} maxLength={80} autoFocus={Boolean(invitationCode)}>
+                <Field name="name" isRequired minLength={2} maxLength={80} autoFocus={Boolean(invitationCode || applicationInvite)}>
                   <FieldLabel>Your name</FieldLabel>
                   <Input placeholder="Alex Morgan" autoComplete="name" />
                 </Field>
@@ -119,7 +122,7 @@ export function AuthScreen({ mode, invitationCode = '' }: { mode: AuthMode; invi
               {error ? <Alert variant="danger">{error}</Alert> : null}
               <Button type="submit" className="w-full" isDisabled={busy}>
                 {busy ? <Spinner data-icon="inline-start" /> : null}
-                {signup ? 'Create workspace' : 'Sign in'}
+                {applicationInvite ? 'Continue' : signup ? 'Create workspace' : 'Sign in'}
                 <ArrowRight data-icon="inline-end" />
               </Button>
             </FieldGroup>

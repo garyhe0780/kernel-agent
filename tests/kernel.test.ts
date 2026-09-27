@@ -1199,3 +1199,41 @@ test('demoting an inviter invalidates their pending invitations', async () => {
   await assert.rejects(kernel.previewInvitation(c.human, invite.token))
   await assert.rejects(kernel.acceptInvitation(c.human, invite.token))
 })
+
+test('application invitations grant one application and skip a private workspace', async () => {
+  const a = await fixture()
+  const email = `app-user-${sequence}@example.test`
+  const id = `app-user-${sequence}`
+  await db.user.create({ data: { id, name: 'App User', email } })
+  const person = { id, name: 'App User', email }
+  await db.membership.update({ where: { userId_workspaceId: { userId: a.human.userId, workspaceId: a.human.workspaceId } }, data: { role: 'operator' } })
+  await assert.rejects(kernel.inviteApplicationUser({ ...a.human, role: 'operator' }, 'procurement', email), /owner/)
+  await db.membership.update({ where: { userId_workspaceId: { userId: a.human.userId, workspaceId: a.human.workspaceId } }, data: { role: 'owner' } })
+  const invite = await kernel.inviteApplicationUser(a.human, 'procurement', email.toUpperCase())
+  assert.ok(invite.token.length > 60)
+  await assert.rejects(kernel.workspaceMembership(person), /invitation/)
+  await assert.rejects(kernel.acceptApplicationInvite({ ...person, email: 'other@example.test' }, invite.token), /different email/)
+  const joined = await kernel.acceptApplicationInvite(person, invite.token)
+  assert.equal(joined.workspaceId, a.human.workspaceId)
+  assert.equal(joined.projectSlug, 'procurement')
+  assert.equal(await db.membership.count({ where: { userId: id } }), 1)
+  assert.equal((await db.membership.findFirst({ where: { userId: id } }))?.role, 'application')
+  const member: Principal = { userId: id, name: 'App User', workspaceId: joined.workspaceId, role: 'application', kind: 'human' }
+  const view = await kernel.snapshot(member)
+  assert.deepEqual(view.projects.map(project => project.slug), ['procurement'])
+  assert.ok((await kernel.snapshot(a.human)).projects.length > 1)
+  await assert.rejects(kernel.snapshot(member, 'hr'), /not found/)
+  await assert.rejects(kernel.createRecord(member, { title: 'Outside' }, 'hr'), /outside your application/)
+  await assert.rejects(kernel.createWorkspace(member, 'Personal workspace'), /application they were invited/)
+  const data = { title: 'Invited request', supplier: 'Supplier', amountCents: 10000, category: 'Office', justification: 'Office supplies needed' }
+  const record = await kernel.createRecord(member, data, 'procurement')
+  assert.equal((record.data as RecordData).title, 'Invited request')
+  const staged = await kernel.stage(member, { recordId: a.record.id, action: 'approve', input: {}, idempotencyKey: `app-approve-${id}` })
+  assert.equal(staged.status, 'staged')
+  assert.match(JSON.stringify(staged.checks), /Role is authorized/)
+  await kernel.review(a.human, staged.change!.id, 'apply')
+  assert.equal((await db.businessRecord.findUniqueOrThrow({ where: { id: a.record.id } })).version, 2)
+  await kernel.updateMember(a.human, id, 'application', 'remove')
+  await assert.rejects(kernel.workspaceMembership(person, a.human.workspaceId), /access/)
+  assert.equal(await db.projectMember.count({ where: { userId: id } }), 0)
+})

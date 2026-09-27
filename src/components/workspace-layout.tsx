@@ -46,6 +46,13 @@ export function WorkspaceLayout() {
       : <LoadingShell />
   }
 
+  if (snapshot.principal.role === 'application' && snapshot.projects.length === 1) {
+    return <Navigate to="/p/$projectSlug" params={{ projectSlug: snapshot.projects[0].slug }} />
+  }
+  if (snapshot.principal.role === 'application' && snapshot.projects.length === 0) {
+    return <main className="auth-page"><h1>No application access</h1><p>Ask the person who invited you for a new link.</p></main>
+  }
+
   return (
     <WorkspaceContext.Provider value={snapshot}>
       <WorkspaceRefreshContext.Provider value={() => setRevision(value => value + 1)}>

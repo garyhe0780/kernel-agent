@@ -18,6 +18,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   memberships   Membership[]
+  projectMembers ProjectMember[]
 }
 
 model Session {
@@ -87,6 +88,8 @@ model Project {
   assembly    Json?
   packages    Json
   versions    ProjectVersion[]
+  members     ProjectMember[]
+  invitations ProjectInvitation[]
   createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   @@unique([workspaceId, slug])
@@ -240,6 +243,30 @@ model BuilderPlan {
   updatedAt DateTime @updatedAt
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   @@index([workspaceId])
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model ProjectInvitation {
+  id        String   @id @default(cuid())
+  projectId String
+  email     String
+  tokenHash String   @unique
+  createdBy String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@index([projectId])
+  @@index([email])
 }
 
 model WorkspaceInvitation {
