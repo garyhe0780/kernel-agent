@@ -23,7 +23,7 @@ export type KernelPattern = {
   assumptions: string[]
   shell: AppShell
   home: string
-  modules: { use: string; as: string; name?: string; label?: string; settings?: Record<string, string | number | boolean> }[]
+  modules: { use: string; version?: number; as: string; name?: string; label?: string; settings?: Record<string, string | number | boolean> }[]
   links: { from: string; to: string }[]
   surfaces: PatternSurface[]
 }
@@ -187,12 +187,13 @@ export function patternCatalog() {
     home: pattern.home,
     shell: pattern.shell,
     homeGrammar: pattern.surfaces.find(surface => surface.view === pattern.home)?.grammar ?? null,
-    modules: pattern.modules.map(item => ({ use: item.use, as: item.as })),
+    modules: pattern.modules.map(item => ({ use: item.use, version: item.version ?? 1, as: item.as })),
     links: pattern.links.map(link => ({ ...link })),
     surfaces: pattern.surfaces.map(surface => {
       const grammar = grammarById(surface.grammar)
       if (!grammar) throw new Error(`Unknown grammar: ${surface.grammar}`)
-      const mod = moduleById(pattern.modules.find(item => item.as === surface.of)?.use ?? '')
+      const instance = pattern.modules.find(item => item.as === surface.of)
+      const mod = moduleById(instance?.use ?? '', instance?.version ?? 1)
       return {
         grammar: surface.grammar,
         of: surface.of,

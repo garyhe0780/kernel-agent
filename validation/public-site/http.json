@@ -1,0 +1,71 @@
+{
+  "checkedAt": "2026-09-28T04:19:10.320Z",
+  "results": [
+    {
+      "path": "/",
+      "status": 200,
+      "title": "Kernel — Business applications for people and agents"
+    },
+    {
+      "path": "/docs",
+      "status": 200,
+      "title": "Documentation — Kernel"
+    },
+    {
+      "path": "/docs/introduction",
+      "status": 200,
+      "title": "Meet Kernel — Kernel docs"
+    },
+    {
+      "path": "/docs/quickstart",
+      "status": 200,
+      "title": "Run Kernel locally — Kernel docs"
+    },
+    {
+      "path": "/docs/concepts",
+      "status": 200,
+      "title": "Core concepts — Kernel docs"
+    },
+    {
+      "path": "/docs/build-applications",
+      "status": 200,
+      "title": "Build an application — Kernel docs"
+    },
+    {
+      "path": "/docs/connect-agents",
+      "status": 200,
+      "title": "Connect an agent — Kernel docs"
+    },
+    {
+      "path": "/docs/agent-runs",
+      "status": 200,
+      "title": "Operate and review runs — Kernel docs"
+    },
+    {
+      "path": "/docs/model-configuration",
+      "status": 200,
+      "title": "Model configuration — Kernel docs"
+    },
+    {
+      "path": "/docs/deployment",
+      "status": 200,
+      "title": "Deployment and maintenance — Kernel docs"
+    },
+    {
+      "path": "/docs/current-scope",
+      "status": 200,
+      "title": "Current scope — Kernel docs"
+    },
+    {
+      "path": "/docs/no-such-guide",
+      "status": 404,
+      "title": "Guide not found — Kernel docs"
+    },
+    {
+      "path": "/?workspace=synthetic-legacy",
+      "status": 307,
+      "location": "/workspace?workspace=synthetic-legacy"
+    }
+  ],
+  "visualVerification": "Blocked: browser automation timed out"
+}

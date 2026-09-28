@@ -1,0 +1,28 @@
+import { useState } from 'react'
+import { ArrowUpRight, Check, ChevronDown, Filter, Mail, MessageSquare, Search } from 'lucide-react'
+
+const sampleRows = [
+  { name: 'Office equipment', ref: 'REQ-1042', owner: 'Alex Morgan', status: 'Pending', amount: '$1,240' },
+  { name: 'Design software', ref: 'REQ-1041', owner: 'Sam Chen', status: 'Approved', amount: '$480' },
+  { name: 'Team workshop', ref: 'REQ-1040', owner: 'Jamie Lee', status: 'Pending', amount: '$850' },
+  { name: 'Studio supplies', ref: 'REQ-1039', owner: 'Alex Morgan', status: 'Completed', amount: '$320' },
+]
+
+/** Illustrative specimens only; these never read or mutate workspace records. */
+export function CatalogPreview({ kind, planned = false }: { kind: string; planned?: boolean }) {
+  const [status, setStatus] = useState('All statuses')
+  const [selected, setSelected] = useState('REQ-1042')
+  const rows = sampleRows.filter(row => status === 'All statuses' || row.status === status)
+  if (planned) return <div className="catalog-unavailable">
+    {kind === 'chat' ? <MessageSquare size={32} /> : <Mail size={32} />}
+    <strong>Preview not available</strong><p>This block is listed in the catalog.<br />Kernel does not run it yet.</p>
+  </div>
+  const filters = <div className="specimen-toolbar"><span><Filter size={14} /> Filter records</span><label className="specimen-select"><span className="sr-only">Sample status</span><select value={status} onChange={event => setStatus(event.target.value)}><option>All statuses</option><option>Pending</option><option>Approved</option><option>Completed</option></select><ChevronDown size={13} /></label><span className="specimen-record-count">{rows.length} records</span></div>
+  if (kind === 'details' || kind === 'detail') return <div className="specimen-record"><div className="specimen-record-top"><span className="specimen-reference">REQ-1042</span><span className="specimen-status" data-status="Pending">Pending</span></div><h3>Office equipment</h3><p>Purchase request</p><dl><div><dt>Requested by</dt><dd>Alex Morgan</dd></div><div><dt>Amount</dt><dd>$1,240</dd></div><div><dt>Supplier</dt><dd>Northstar Office</dd></div><div><dt>Description</dt><dd>Equipment for the new workspace.</dd></div></dl></div>
+  if (kind === 'overview') return <div className="specimen-overview"><CatalogPreview kind="stats" /><CatalogPreview kind="chart" /></div>
+  if (kind === 'directory') return <div className="specimen-table-wrap"><div className="specimen-toolbar"><span><Search size={14} /> Organization directory</span><span className="specimen-record-count">4 records</span></div><div className="specimen-table-scroll"><table className="specimen-table" data-density="comfortable"><thead><tr><th>Organization</th><th>Contact</th><th>Status</th></tr></thead><tbody>{[['Northstar Office', 'Alex Morgan', 'NS'], ['Fieldwork Studio', 'Sam Chen', 'FS'], ['Meridian Supply', 'Jamie Lee', 'MS'], ['Common Ground', 'Taylor Park', 'CG']].map(([name, contact, initials]) => <tr key={name}><td><div className="specimen-directory-name"><span>{initials}</span><strong>{name}</strong></div></td><td>{contact}</td><td><span className="specimen-status" data-status="Approved">Active</span></td></tr>)}</tbody></table></div><footer className="specimen-table-footer">4 sample organizations</footer></div>
+  if (kind === 'stats') return <div className="specimen-stats"><div><span>Total requests</span><strong>4</strong><small>In this sample view</small></div><div><span>Pending review</span><strong>2</strong><small>Awaiting a decision</small></div><div><span>Total amount</span><strong>$2,890</strong><small>Sum of request amounts</small></div></div>
+  if (kind === 'chart') return <div className="specimen-chart"><h3>Requests by status</h3><p>4 sample records</p>{[['Pending', 2], ['Approved', 1], ['Completed', 1]].map(([name, count]) => <div className="specimen-bar-row" key={name}><span>{name}</span><div><span style={{ width: `${Number(count) * 50}%` }} /></div><strong>{count}</strong></div>)}<div className="specimen-chart-axis"><span>0</span><span>1</span><span>2 records</span></div></div>
+  if (kind === 'board') return <div className="specimen-board">{['Pending', 'Approved', 'Completed'].map(name => <section key={name}><h3><span className="specimen-dot" data-status={name} />{name}<span>{sampleRows.filter(row => row.status === name).length}</span></h3>{sampleRows.filter(row => row.status === name).map(row => <div className="specimen-board-record" key={row.ref}><small>{row.ref}</small><strong>{row.name}</strong><footer><span>{row.owner.split(' ').map(part => part[0]).join('')}</span>{row.amount}</footer></div>)}</section>)}</div>
+  return <div className="specimen-table-wrap">{filters}{kind === 'filters' && <div className="specimen-filter-note"><Search size={18} /><span>Try a status filter to narrow this sample view.</span></div>}<div className="specimen-table-scroll"><table className="specimen-table" data-density={kind === 'ledger' ? 'dense' : 'default'}><thead><tr><th>Request</th><th>Status</th><th>Amount</th>{kind !== 'filters' && <th>Requested by</th>}</tr></thead><tbody>{rows.map(row => <tr key={row.ref} data-selected={selected === row.ref}><td><button type="button" onClick={() => setSelected(row.ref)} aria-pressed={selected === row.ref}><span className="specimen-check">{selected === row.ref && <Check size={11} />}</span><span>{row.name}<small>{row.ref}</small></span></button></td><td><span className="specimen-status" data-status={row.status}>{row.status}</span></td><td>{row.amount}</td>{kind !== 'filters' && <td>{row.owner}</td>}</tr>)}</tbody></table></div><footer className="specimen-table-footer"><span>{rows.length} of 4 sample records</span><span>Saved view <ArrowUpRight size={12} /></span></footer></div>
+}

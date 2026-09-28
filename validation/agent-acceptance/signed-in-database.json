@@ -1,0 +1,41 @@
+{
+  "verifiedAt": "2026-09-27T15:45:11.249Z",
+  "mode": "signed-in-browser-live-model",
+  "status": "passed",
+  "journeys": [
+    {
+      "pattern": "crm",
+      "finalStatus": "converted",
+      "records": 1,
+      "runStatus": "completed",
+      "completedSteps": 3,
+      "executionModes": [
+        "review",
+        "automatic",
+        "review"
+      ],
+      "auditActors": [
+        "human",
+        "agent",
+        "human"
+      ]
+    },
+    {
+      "pattern": "issues",
+      "finalStatus": "done",
+      "records": 1,
+      "runStatus": "completed",
+      "completedSteps": 3,
+      "executionModes": [
+        "review",
+        "automatic",
+        "review"
+      ],
+      "auditActors": [
+        "human",
+        "agent",
+        "human"
+      ]
+    }
+  ]
+}

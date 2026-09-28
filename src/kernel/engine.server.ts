@@ -1,6 +1,11 @@
+import { agentLimits, lockCredential, admitRun, admitOperation } from './agent-limits.server'
+import { inspectRun } from './run-inspection.server'
+import { agentRunSchema, agentRunCommandSchema, type RunReceipt, runRecovery } from './agent-runs'
 import { planningContentSchema, planBrief } from './builder-plan'
 import { createHash, randomUUID } from 'node:crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
+import { z } from 'zod'
+import { CREATE_ACTION, agentExecutionSchema, createProposalSchema, creationContract, creationValues, recordQuerySchema } from './record-operations'
 import { applySettings, definitionSchema, evaluate, toolContracts, validateFields, type Principal, type RecordData } from './definition'
 import { catalog, catalogFor, composePublic, seedFor } from './packages'
 import { asStringList, projectTemplates, sortProjects, toProjectSnapshot } from './projects'
@@ -75,7 +80,11 @@ export class Kernel {
       catch (error) { throw error instanceof KernelError ? error : new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid assembly.', 422) }
     }
     if (command.definition === undefined) throw new KernelError('INVALID_INPUT', 'Provide a catalog pattern, an assembly of catalog modules, or a definition.', 400)
-    return { assembly: null, definition: validateApplication(command.definition) }
+    try { return { assembly: null, definition: validateApplication(command.definition) } }
+    catch (error) {
+      if (error instanceof z.ZodError || error instanceof KernelError) throw error
+      throw new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid application definition.', 422)
+    }
   }
 
   private async capability(tx: Tx, workspaceId: string, slug: string) {
@@ -449,11 +458,12 @@ export class Kernel {
       const changes = await tx.changeSet.findMany({ where: { workspaceId: p.workspaceId, status: 'pending' }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })
       const projects = (await tx.project.findMany({ where: { workspaceId: p.workspaceId } })).map(toProjectSnapshot)
       const records = await tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, id: { in: changes.map(change => change.recordId) } } })
+      const caps = await tx.capability.findMany({ where: { workspaceId: p.workspaceId, slug: { in: [...new Set(changes.map(change => change.capability))] } }, select: { slug: true, version: true } })
       return changes.map(change => {
         const project = projects.find(item => item.packages.includes(change.capability))
         const record = records.find(item => item.id === change.recordId)
-        const title = (record?.data as RecordData | undefined)?.title
-        return { id: change.id, projectSlug: project?.slug ?? null, projectName: project?.name ?? 'Unavailable application', title: typeof title === 'string' ? title : 'Unavailable record', action: change.action, actorKind: change.actorKind, createdAt: change.createdAt, stale: !record || record.version !== change.recordVersion }
+        const title = (change.kind === 'create' ? change.after as RecordData : record?.data as RecordData | undefined)?.title
+        return { id: change.id, projectSlug: project?.slug ?? null, projectName: project?.name ?? 'Unavailable application', title: typeof title === 'string' ? title : 'Unavailable record', action: change.kind === 'create' ? 'Create record' : change.action, actorKind: change.actorKind, createdAt: change.createdAt, stale: caps.find(cap => cap.slug === change.capability)?.version !== change.definitionVersion || (change.kind !== 'create' && (!record || record.version !== change.recordVersion)) }
       })
     })
   }
@@ -491,7 +501,7 @@ export class Kernel {
       const changes = scopedChanges.map(change => ({ ...change, proposerName: change.agentCredentialId ? credentials.find(item => item.id === change.agentCredentialId)?.name ?? 'Revoked agent' : `${proposers.find(item => item.id === change.proposedBy)?.name ?? 'Former member'}${change.actorKind === 'agent' ? ' · agent' : ''}` }))
       const executions = slugs ? allExecutions.filter(event => {
         if ((event.details as Record<string, unknown>).projectSlug === current?.slug) return true
-        if (event.recordId) return recordIds.has(event.recordId)
+        if (event.recordId) return recordIds.has(event.recordId) || scopedChanges.some(change => change.recordId === event.recordId)
         if (event.action === 'capability.publish') {
           const capability = (event.details as Record<string, unknown>).capability
           return typeof capability === 'string' && slugs.has(capability)
@@ -816,6 +826,241 @@ export class Kernel {
     })
   }
 
+  async stageCreate(p: Principal, raw: unknown) {
+    const command = createProposalSchema.parse(raw)
+    const execute = () => this.db.$transaction(tx => this.stageCreateTx(tx, p, command))
+    try { return await execute() }
+    catch (error) {
+      // A simultaneous retry can lose the unique-key race; reload the winning proposal.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return execute()
+      throw error
+    }
+  }
+
+  private async stageCreateTx(tx: Tx, p: Principal, command: z.infer<typeof createProposalSchema>, executionMode: 'review' | 'automatic' = 'review') {
+      await this.authorize(tx, p, 'operate')
+      if (!p.agentCredentialId) throw new KernelError('AGENT_SCOPE', 'Use a scoped operate credential to propose record creation.', 403)
+      const cap = await this.capability(tx, p.workspaceId, command.capability)
+      await authorizeAgentAction(tx, p.agentCredentialId, cap.slug, CREATE_ACTION, cap.version)
+      let values: ReturnType<typeof creationValues>
+      try { values = creationValues(cap.definition, command.input) }
+      catch (error) { throw new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid record fields.', 422) }
+      await this.validateReferences(tx, p, cap.definition.entity.fields, values.after)
+      if (p.agentCredentialId) await lockCredential(tx, p.agentCredentialId)
+      const existing = await tx.changeSet.findUnique({ where: { workspaceId_idempotencyKey: { workspaceId: p.workspaceId, idempotencyKey: command.idempotencyKey } } })
+      if (existing) {
+        if (existing.executionMode !== executionMode || existing.kind !== 'create' || existing.capability !== cap.slug || existing.proposedBy !== p.userId || existing.agentCredentialId !== p.agentCredentialId || existing.actorKind !== p.kind || canonical(existing.input) !== canonical(values.input)) throw new KernelError('IDEMPOTENCY_CONFLICT', 'This key was already used for a different proposal.', 409)
+        return { status: existing.status, change: existing, checks: existing.checks }
+      }
+      await admitOperation(tx, p.agentCredentialId)
+      const checks = [{ id: 'create', label: 'Creation fields and relationships', passed: true, message: executionMode === 'automatic' ? 'Validated against the published definition; owner-authorized automatic execution.' : 'Validated against the published definition; human review required.' }]
+      const change = await tx.changeSet.create({ data: {
+        kind: 'create', executionMode, workspaceId: p.workspaceId, capability: cap.slug, definitionVersion: cap.version,
+        recordId: randomUUID(), recordVersion: 0, action: CREATE_ACTION,
+        input: json(values.input), before: {}, after: json(values.after), checks: json(checks),
+        proposedBy: p.userId, actorKind: p.kind, agentCredentialId: p.agentCredentialId, idempotencyKey: command.idempotencyKey,
+      } })
+      await this.event(tx, p, `${cap.slug}.${CREATE_ACTION}`, 'staged', { title: values.after.title, kind: 'create', executionMode, definitionVersion: cap.version }, change.recordId, change.id)
+      return { status: 'staged', change, checks }
+  }
+
+  async executeAgent(p: Principal, raw: unknown) {
+    const command = agentExecutionSchema.parse(raw)
+    const execute = () => this.db.$transaction(async tx => {
+      return this.executeAgentTx(tx, p, command)
+    })
+    try { return await execute() }
+    catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return execute()
+      throw error
+    }
+  }
+
+  private async executeAgentTx(tx: Tx, p: Principal, command: z.infer<typeof agentExecutionSchema>) {
+      await this.authorize(tx, p, 'operate')
+      if (!p.agentCredentialId) throw new KernelError('AGENT_SCOPE', 'Automatic execution requires a scoped credential.', 403)
+      const cap = await this.capability(tx, p.workspaceId, command.capability)
+      const action = command.operation === 'create' ? CREATE_ACTION : command.action
+      const access = await authorizeAgentAction(tx, p.agentCredentialId, cap.slug, action, cap.version)
+      if (access.scope.execution !== 'automatic') throw new KernelError('AGENT_SCOPE', 'Human review is required for this operation.', 403)
+      const staged = command.operation === 'create'
+        ? await this.stageCreateTx(tx, p, command, 'automatic')
+        : await this.stageTx(tx, p, command, 'automatic')
+      if (!staged.change || staged.change.status !== 'pending') return staged
+      const applied = await this.resolveChange(tx, p, staged.change.id, 'apply', true)
+      return { ...applied, checks: staged.checks }
+  }
+
+  async startAgentRun(p: Principal, raw: unknown) {
+    const command = agentRunSchema.parse(raw)
+    for (const [index, step] of command.steps.entries()) {
+      if (step.operation === 'action' && typeof step.record !== 'string' && step.record.step >= index) {
+        throw new KernelError('INVALID_INPUT', 'Record references must point to an earlier step.', 400)
+      }
+    }
+    const start = () => this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'operate')
+      if (!p.agentCredentialId) throw new KernelError('AGENT_SCOPE', 'Runs require a scoped operate credential.', 403)
+      for (const step of command.steps) {
+        const cap = await this.capability(tx, p.workspaceId, step.capability)
+        const access = await authorizeAgentAction(tx, p.agentCredentialId, cap.slug, step.operation === 'create' ? CREATE_ACTION : step.action, cap.version)
+        if (step.execution === 'automatic' && access.scope.execution !== 'automatic') throw new KernelError('AGENT_SCOPE', 'Human review is required for this operation.', 403)
+      }
+      await lockCredential(tx, p.agentCredentialId)
+      const existing = await tx.agentRun.findUnique({ where: { agentCredentialId_idempotencyKey: { agentCredentialId: p.agentCredentialId, idempotencyKey: command.idempotencyKey } } })
+      if (existing) {
+        if (canonical(existing.steps) !== canonical(command.steps)) throw new KernelError('IDEMPOTENCY_CONFLICT', 'This key already identifies a different run.', 409)
+        return existing
+      }
+      await admitRun(tx, p.agentCredentialId)
+      const run = await tx.agentRun.create({ data: { workspaceId: p.workspaceId, agentCredentialId: p.agentCredentialId, idempotencyKey: command.idempotencyKey, steps: json(command.steps) } })
+      await this.event(tx, p, 'run.start', 'queued', { runId: run.id, steps: command.steps.length })
+      return run
+    })
+    try { return await start() } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return start()
+      throw error
+    }
+  }
+
+  async agentRun(p: Principal, raw: unknown): Promise<import('./run-inspection.server').InspectedRun> {
+    const command = agentRunCommandSchema.parse(raw)
+    const run = await this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'operate')
+      if (!p.agentCredentialId && (p.kind !== 'human' || p.role !== 'owner')) throw new KernelError('FORBIDDEN', 'Only the credential or workspace owner can manage this run.', 403)
+      const run = await tx.agentRun.findFirst({ where: { id: command.runId, workspaceId: p.workspaceId, ...(p.agentCredentialId ? { agentCredentialId: p.agentCredentialId } : {}) } })
+      if (!run) throw new KernelError('NOT_FOUND', 'Run not found.', 404)
+      if (command.command === 'cancel' && ['queued', 'waiting', 'failed'].includes(run.status)) {
+        const claimed = await tx.agentRun.updateMany({ where: { id: run.id, revision: run.revision }, data: { status: 'cancelled', revision: { increment: 1 } } })
+        if (!claimed.count) throw new KernelError('CONFLICT', 'Run changed; retry cancellation.', 409)
+        const receipts = run.receipts as RunReceipt[]
+        await tx.changeSet.updateMany({ where: { id: { in: receipts.map(r => r.changeId) }, workspaceId: run.workspaceId, agentCredentialId: run.agentCredentialId, status: 'pending' }, data: { status: 'rejected' } })
+        await this.event(tx, p, 'run.cancel', 'cancelled', { runId: run.id })
+      }
+      if (command.command === 'retry' && run.status === 'failed') {
+        if (Date.now() - run.createdAt.getTime() >= agentLimits.runLifetimeMs) throw new KernelError('RUN_EXPIRED', 'This run exceeded seven days. Cancel it and start a revised task.', 409)
+        await admitRun(tx, run.agentCredentialId)
+        if (!runRecovery(run.status, run.error).canRetry) throw new KernelError('RUN_REPLAN_REQUIRED', runRecovery(run.status, run.error).message, 409)
+        const changed = await tx.agentRun.updateMany({ where: { id: run.id, revision: run.revision }, data: { status: 'queued', error: Prisma.DbNull, revision: { increment: 1 } } })
+        if (!changed.count) throw new KernelError('CONFLICT', 'Run changed; retry the request.', 409)
+        await this.event(tx, p, 'run.retry', 'queued', { runId: run.id })
+      }
+      return inspectRun(tx, await tx.agentRun.findUniqueOrThrow({ where: { id: run.id } }))
+    })
+    if (command.command === 'advance') {
+      await this.advanceAgentRun(run.id)
+      return this.agentRun(p, { runId: run.id })
+    }
+    return run
+  }
+
+  async pollAgentRuns() {
+    try {
+      const result = await this.advanceAgentRun()
+      await this.db.agentWorkerHealth.upsert({ where: { id: 'operations' }, create: { id: 'operations', lastSuccessAt: new Date() }, update: { lastSuccessAt: new Date() } })
+      return result
+    } catch (error) {
+      await this.db.agentWorkerHealth.upsert({ where: { id: 'operations' }, create: { id: 'operations', lastFailureAt: new Date() }, update: { lastFailureAt: new Date() } })
+      throw error
+    }
+  }
+
+  async agentWorkerHealth(p: Principal) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p)
+      if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only workspace owners can inspect worker health.', 403)
+      const health = await tx.agentWorkerHealth.findUnique({ where: { id: 'operations' } })
+      const healthy = Boolean(health?.lastSuccessAt && Date.now() - health.lastSuccessAt.getTime() < agentLimits.stalledMs)
+      const stalled = await tx.agentRun.count({ where: { workspaceId: p.workspaceId, status: 'queued', updatedAt: { lt: new Date(Date.now() - agentLimits.stalledMs) } } })
+      return { status: healthy ? (health?.lastFailureAt && health.lastFailureAt > health.lastSuccessAt! ? 'degraded' : 'healthy') : 'unavailable', lastSuccessAt: health?.lastSuccessAt ?? null, lastFailureAt: health?.lastFailureAt ?? null, stalled, limits: agentLimits }
+    })
+  }
+
+  /** One bounded, database-only step. The revision lock, effect and checkpoint
+   * commit together; a crash rolls everything back for the next worker. */
+  async advanceAgentRun(runId?: string): Promise<boolean> {
+    const candidate = await this.db.agentRun.findFirst({ where: { ...(runId ? { id: runId } : {}), status: { in: ['queued', 'waiting'] } }, orderBy: { updatedAt: 'asc' } })
+    if (!candidate) return false
+    try {
+      return await this.db.$transaction(async tx => {
+        const claimed = await tx.agentRun.updateMany({ where: { id: candidate.id, revision: candidate.revision, status: candidate.status }, data: { revision: { increment: 1 } } })
+        if (!claimed.count) return false
+        if (Date.now() - candidate.createdAt.getTime() >= agentLimits.runLifetimeMs) {
+          await tx.changeSet.updateMany({ where: { workspaceId: candidate.workspaceId, agentCredentialId: candidate.agentCredentialId, id: { in: (candidate.receipts as RunReceipt[]).map(r => r.changeId) }, status: 'pending' }, data: { status: 'rejected' } })
+          await tx.agentRun.update({ where: { id: candidate.id }, data: { status: 'failed', error: { code: 'RUN_EXPIRED', message: 'Run exceeded seven days. Applied changes remain; pending proposals were rejected. Start a revised task.' } } })
+          await tx.execution.create({ data: { workspaceId: candidate.workspaceId, actorId: 'agent-run-worker', actorName: 'Run worker', actorKind: 'system', action: 'run.expire', outcome: 'failed', details: { runId: candidate.id } } })
+          return true
+        }
+        const { p } = await resolveAgent(tx, candidate.agentCredentialId)
+        if (p.workspaceId !== candidate.workspaceId || p.agentGrant !== 'operate') throw new KernelError('AGENT_SCOPE', 'Run credential is no longer valid.', 403)
+        const receipts = candidate.receipts as RunReceipt[]
+        const steps = agentRunSchema.shape.steps.parse(candidate.steps)
+        let receipt = receipts[candidate.nextStep]
+        if (!receipt) {
+          const step = steps[candidate.nextStep]
+          const base = { capability: step.capability, input: step.input, idempotencyKey: `run:${candidate.id}:${candidate.nextStep}` }
+          const command = step.operation === 'create' ? { ...base, operation: 'create' as const } : {
+            ...base, operation: 'action' as const, action: step.action,
+            recordId: typeof step.record === 'string' ? step.record : receipts[step.record.step].recordId,
+          }
+          const result = step.execution === 'automatic' ? await this.executeAgentTx(tx, p, command)
+            : command.operation === 'create' ? await this.stageCreateTx(tx, p, command) : await this.stageTx(tx, p, command)
+          if (!result.change) throw new KernelError('POLICY_BLOCKED', 'Step blocked by application policy.', 422, result.checks)
+          receipt = { changeId: result.change.id, recordId: result.change.recordId }
+          receipts.push(receipt)
+        }
+        const change = await tx.changeSet.findUniqueOrThrow({ where: { id: receipt.changeId } })
+        const nextStep = candidate.nextStep + (change.status === 'applied' ? 1 : 0)
+        const status = change.status === 'rejected' ? 'failed' : change.status === 'pending' ? 'waiting' : nextStep === steps.length ? 'completed' : 'queued'
+        await tx.agentRun.update({ where: { id: candidate.id }, data: { receipts: json(receipts), nextStep, status,
+          error: status === 'failed' ? { code: 'PROPOSAL_REJECTED', message: 'A run proposal was rejected; create a new run with revised steps.' } : Prisma.DbNull,
+        } })
+        if (status !== 'waiting' || candidate.status !== 'waiting') await this.event(tx, p, 'run.step', status, { runId: candidate.id, step: candidate.nextStep, changeId: receipt.changeId })
+        return true
+      })
+    } catch (error) {
+      if (error instanceof KernelError && error.code === 'OPERATION_RATE_LIMIT') {
+        await this.db.agentRun.updateMany({ where: { id: candidate.id, revision: candidate.revision, status: candidate.status }, data: { updatedAt: new Date(), error: { code: error.code, message: error.message } } })
+        return false
+      }
+      // The effect transaction rolled back. Never overwrite a newer checkpoint or cancellation.
+      const failure = error instanceof KernelError ? { code: error.code, message: error.message } : { code: 'STEP_FAILED', message: 'Step failed without committing. Retry after resolving the cause.' }
+      await this.db.agentRun.updateMany({ where: { id: candidate.id, revision: candidate.revision, status: candidate.status }, data: { status: 'failed', error: failure, revision: { increment: 1 } } })
+      return true
+    }
+  }
+
+  async queryRecords(p: Principal, raw: unknown) {
+    const query = recordQuerySchema.parse(raw)
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p, 'operate')
+      if (!p.agentCredentialId) throw new KernelError('AGENT_SCOPE', 'Use a scoped operate credential to query records.', 403)
+      const access = await resolveAgent(tx, p.agentCredentialId)
+      if (!access.project || !asStringList(access.project.packages).includes(query.capability)) throw new KernelError('AGENT_SCOPE', 'Choose an entity in this application.', 403)
+      const cap = await this.capability(tx, p.workspaceId, query.capability)
+      const predicates: Prisma.BusinessRecordWhereInput[] = []
+      for (const filter of query.filters) {
+        const field = Object.hasOwn(cap.definition.entity.fields, filter.field) ? cap.definition.entity.fields[filter.field] : undefined
+        if (!field) throw new KernelError('INVALID_INPUT', `Unknown filter field: ${filter.field}`)
+        let value
+        try { value = validateFields({ [filter.field]: field }, { [filter.field]: filter.value })[filter.field] }
+        catch (error) { throw new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid filter value.') }
+        predicates.push({ data: { path: [filter.field], equals: value } })
+      }
+      if (query.title) predicates.push({ data: { path: ['title'], string_contains: query.title } })
+      const fingerprint = createHash('sha256').update(canonical({ credential: p.agentCredentialId, capability: query.capability, version: cap.version, filters: query.filters, title: query.title ?? null })).digest('hex')
+      let after: string | undefined
+      if (query.cursor) {
+        try {
+          const cursor = z.object({ after: z.string().min(1).max(100), query: z.literal(fingerprint) }).strict().parse(JSON.parse(Buffer.from(query.cursor, 'base64url').toString()))
+          after = cursor.after
+        } catch { throw new KernelError('INVALID_INPUT', 'Cursor does not match this query or definition. Start a fresh query.') }
+      }
+      const records = await tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: cap.slug, ...(after ? { id: { gt: after } } : {}), AND: predicates }, orderBy: { id: 'asc' }, take: query.limit + 1 })
+      return { capability: cap.slug, definitionVersion: cap.version, records: records.slice(0, query.limit), nextCursor: records.length > query.limit ? Buffer.from(JSON.stringify({ after: records[query.limit - 1].id, query: fingerprint })).toString('base64url') : null }
+    })
+  }
+
   async agentProposal(p: Principal, id: string) {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p, 'operate')
@@ -837,10 +1082,10 @@ export class Kernel {
       const capabilities = caps.map(cap => {
         const definition = definitionSchema.parse(cap.definition)
         const actions = definition.actions.filter(action => action.roles.includes('operator') && access.actions.some(scope => scope.capability === cap.slug && scope.action === action.name && scope.version === cap.version))
-        return { slug: cap.slug, version: cap.version, entity: definition.entity, tools: toolContracts({ ...definition, actions }).map(tool => {
+        return { slug: cap.slug, version: cap.version, entity: definition.entity, creation: access.actions.some(scope => scope.capability === cap.slug && scope.action === CREATE_ACTION && scope.version === cap.version) ? { inputSchema: creationContract(definition), execution: access.actions.find(scope => scope.capability === cap.slug && scope.action === CREATE_ACTION)?.execution ?? 'review' } : null, tools: toolContracts({ ...definition, actions }).map(tool => {
           const { recordId, idempotencyKey, ...properties } = tool.inputSchema.properties
           const action = tool.name.slice(cap.slug.length + 1)
-          return { ...tool, inputSchema: { type: 'object', additionalProperties: false, required: ['type', 'recordId', 'action', 'input', 'idempotencyKey'], properties: {
+          return { ...tool, execution: access.actions.find(scope => scope.capability === cap.slug && scope.action === action)?.execution ?? 'review', inputSchema: { type: 'object', additionalProperties: false, required: ['type', 'recordId', 'action', 'input', 'idempotencyKey'], properties: {
             type: { type: 'string', const: 'stage' }, recordId, action: { type: 'string', const: action }, idempotencyKey,
             input: { type: 'object', additionalProperties: false, properties, required: tool.inputSchema.required.filter(key => !['recordId', 'idempotencyKey'].includes(key)) },
           } } }
@@ -848,12 +1093,15 @@ export class Kernel {
       })
       const records = await tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: { in: packages }, ...(cursor ? { id: { gt: cursor } } : {}) }, orderBy: { id: 'asc' }, take: 101 })
       const staleActions = access.actions.filter(scope => !caps.some(cap => cap.slug === scope.capability && cap.version === scope.version))
-      return { project: { slug: access.project.slug, name: access.project.name, version: access.project.version }, capabilities, records: records.slice(0, 100), nextCursor: records.length > 100 ? records[99].id : null, staleActions, mode: 'Read application records and stage selected actions as operator. Human review is required.' }
+      return { project: { slug: access.project.slug, name: access.project.name, version: access.project.version }, capabilities, records: records.slice(0, 100), nextCursor: records.length > 100 ? records[99].id : null, staleActions, mode: 'Scoped operator access. Review is the default; only explicitly granted automatic operations may apply without review.' }
     })
   }
 
   async stage(p: Principal, command: { recordId: string; action: string; input: unknown; idempotencyKey: string; capability?: string }) {
-    return this.db.$transaction(async tx => {
+    return this.db.$transaction(tx => this.stageTx(tx, p, command))
+  }
+
+  private async stageTx(tx: Tx, p: Principal, command: Parameters<Kernel['stage']>[1], executionMode: 'review' | 'automatic' = 'review') {
       await this.authorize(tx, p, 'operate')
       const record = await tx.businessRecord.findFirst({ where: { id: command.recordId, workspaceId: p.workspaceId } })
       if (!record) throw new KernelError('NOT_FOUND', 'Record not found.', 404)
@@ -863,37 +1111,63 @@ export class Kernel {
       await this.assertApplicationCapability(tx, p, cap.slug)
       const result = evaluate(cap.definition, command.action, record.data as RecordData, command.input, recordRole(p.role))
       await this.validateReferences(tx, p, cap.definition.entity.fields, result.after)
+      if (p.agentCredentialId) await lockCredential(tx, p.agentCredentialId)
       const existing = await tx.changeSet.findUnique({ where: { workspaceId_idempotencyKey: { workspaceId: p.workspaceId, idempotencyKey: command.idempotencyKey } } })
       if (existing) {
-        if (existing.recordId !== record.id || existing.action !== command.action || existing.proposedBy !== p.userId || existing.actorKind !== p.kind || existing.agentCredentialId !== (p.agentCredentialId ?? null) || JSON.stringify(existing.input) !== JSON.stringify(result.input)) throw new KernelError('IDEMPOTENCY_CONFLICT', 'This key was already used for a different proposal.', 409)
+        if (existing.executionMode !== executionMode || existing.recordId !== record.id || existing.action !== command.action || existing.proposedBy !== p.userId || existing.actorKind !== p.kind || existing.agentCredentialId !== (p.agentCredentialId ?? null) || JSON.stringify(existing.input) !== JSON.stringify(result.input)) throw new KernelError('IDEMPOTENCY_CONFLICT', 'This key was already used for a different proposal.', 409)
         return { status: existing.status, change: existing, checks: existing.checks }
       }
       if (!result.allowed) {
-        await this.event(tx, p, `${cap.slug}.${command.action}`, 'blocked', { title: (record.data as RecordData).title, checks: result.checks }, record.id)
+        await this.event(tx, p, `${cap.slug}.${command.action}`, 'blocked', { title: (record.data as RecordData).title, executionMode, checks: result.checks }, record.id)
         return { status: 'blocked', change: null, checks: result.checks }
       }
+      if (p.agentCredentialId) await admitOperation(tx, p.agentCredentialId)
       const change = await tx.changeSet.create({ data: {
-        workspaceId: p.workspaceId, capability: cap.slug, definitionVersion: cap.version,
+        executionMode, workspaceId: p.workspaceId, capability: cap.slug, definitionVersion: cap.version,
         recordId: record.id, recordVersion: record.version, action: command.action,
         input: json(result.input), before: record.data!, after: json(result.after), checks: json(result.checks),
         proposedBy: p.userId, actorKind: p.kind, agentCredentialId: p.agentCredentialId, idempotencyKey: command.idempotencyKey,
       } })
-      await this.event(tx, p, `${cap.slug}.${command.action}`, 'staged', { title: (record.data as RecordData).title, definitionVersion: cap.version, recordVersion: record.version }, record.id, change.id)
+      await this.event(tx, p, `${cap.slug}.${command.action}`, 'staged', { title: (record.data as RecordData).title, executionMode, definitionVersion: cap.version, recordVersion: record.version }, record.id, change.id)
       return { status: 'staged', change, checks: result.checks }
-    })
   }
 
   async review(p: Principal, changeId: string, decision: 'apply' | 'reject') {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       if (p.kind !== 'human') throw new KernelError('HUMAN_APPROVAL_REQUIRED', 'Only the authenticated human review surface can apply or reject a proposal.', 403)
+      return this.resolveChange(tx, p, changeId, decision)
+    })
+  }
+
+  private async resolveChange(tx: Tx, p: Principal, changeId: string, decision: 'apply' | 'reject', automatic = false) {
       const change = await tx.changeSet.findFirst({ where: { id: changeId, workspaceId: p.workspaceId } })
       if (!change) throw new KernelError('NOT_FOUND', 'Proposal not found.', 404)
+      if (decision === 'apply' && change.status === 'pending' && change.idempotencyKey.startsWith('run:')) {
+        const run = await tx.agentRun.findFirst({ where: { id: change.idempotencyKey.split(':')[1], workspaceId: p.workspaceId } })
+        if (run && (run.receipts as RunReceipt[]).some(r => r.changeId === change.id) && Date.now() - run.createdAt.getTime() >= agentLimits.runLifetimeMs) throw new KernelError('RUN_EXPIRED', 'The run deadline passed. Cancel the run and start a revised task.', 409)
+      }
       const cap = await this.capability(tx, p.workspaceId, change.capability)
-      if (!cap.definition.reviewerRoles.includes(p.role)) throw new KernelError('FORBIDDEN', 'Your role cannot review proposals.', 403)
+      if (automatic) {
+        if (!p.agentCredentialId || change.agentCredentialId !== p.agentCredentialId || change.executionMode !== 'automatic' || decision !== 'apply') throw new KernelError('AGENT_SCOPE', 'This operation cannot run automatically.', 403)
+        const access = await authorizeAgentAction(tx, p.agentCredentialId, cap.slug, change.action, cap.version)
+        if (access.scope.execution !== 'automatic') throw new KernelError('AGENT_SCOPE', 'Human review is required for this operation.', 403)
+      }
+      if (!automatic && !cap.definition.reviewerRoles.includes(p.role)) throw new KernelError('FORBIDDEN', 'Your role cannot review proposals.', 403)
       if (change.status === 'applied' && decision === 'apply' || change.status === 'rejected' && decision === 'reject') return { status: change.status, change, repeated: true }
       if (change.status !== 'pending') throw new KernelError('CONFLICT', 'This proposal has already been resolved.', 409)
-      if (decision === 'apply') {
+      const status = decision === 'apply' ? 'applied' : 'rejected'
+      const claimed = await tx.changeSet.updateMany({ where: { id: change.id, workspaceId: p.workspaceId, status: 'pending' }, data: { status, reviewedBy: automatic ? null : p.userId, reviewedAt: automatic ? null : new Date() } })
+      if (claimed.count !== 1) throw new KernelError('CONFLICT', 'Another reviewer resolved this proposal.', 409)
+      if (decision === 'apply' && change.kind === 'create') {
+        if (cap.version !== change.definitionVersion) throw new KernelError('STALE_PROPOSAL', 'The definition changed. Reject this proposal and stage a fresh one.', 409)
+        if (!change.agentCredentialId) throw new KernelError('AGENT_SCOPE', 'Creation proposals require a scoped credential.', 403)
+        await authorizeAgentAction(tx, change.agentCredentialId, cap.slug, CREATE_ACTION, cap.version)
+        const values = creationValues(cap.definition, change.input)
+        await this.validateReferences(tx, p, cap.definition.entity.fields, values.after)
+        if (canonical(values.after) !== canonical(change.after)) throw new KernelError('CONFLICT', 'Creation fields no longer match the proposal.', 409)
+        await tx.businessRecord.create({ data: { id: change.recordId, workspaceId: p.workspaceId, capability: cap.slug, entity: cap.definition.entity.name, data: json(values.after) } })
+      } else if (decision === 'apply') {
         const record = await tx.businessRecord.findFirst({ where: { id: change.recordId, workspaceId: p.workspaceId } })
         if (!record || record.version !== change.recordVersion || cap.version !== change.definitionVersion) throw new KernelError('STALE_PROPOSAL', 'The record or capability has changed. Reject this proposal and stage a fresh one.', 409)
         const proposer = await tx.membership.findFirst({ where: { userId: change.proposedBy, workspaceId: p.workspaceId } })
@@ -906,12 +1180,8 @@ export class Kernel {
         const updated = await tx.businessRecord.updateMany({ where: { id: record.id, workspaceId: p.workspaceId, version: change.recordVersion }, data: { data: json(result.after), version: { increment: 1 } } })
         if (updated.count !== 1) throw new KernelError('STALE_PROPOSAL', 'The record changed during review.', 409)
       }
-      const status = decision === 'apply' ? 'applied' : 'rejected'
-      const updated = await tx.changeSet.updateMany({ where: { id: change.id, workspaceId: p.workspaceId, status: 'pending' }, data: { status, reviewedBy: p.userId, reviewedAt: new Date() } })
-      if (updated.count !== 1) throw new KernelError('CONFLICT', 'Another reviewer resolved this proposal.', 409)
-      await this.event(tx, p, `${cap.slug}.${change.action}`, status, { title: (change.before as RecordData).title, before: change.before, after: decision === 'apply' ? change.after : change.before, definitionVersion: cap.version }, change.recordId, change.id)
+      await this.event(tx, p, `${cap.slug}.${change.action}`, status, { title: ((change.kind === 'create' ? change.after : change.before) as RecordData).title, kind: change.kind, executionMode: change.executionMode, agentCredentialId: change.agentCredentialId, before: change.before, after: decision === 'apply' ? change.after : change.before, definitionVersion: cap.version }, change.recordId, change.id)
       return { status, change: await tx.changeSet.findUniqueOrThrow({ where: { id: change.id } }), repeated: false }
-    })
   }
 
   async publishSettings(p: Principal, command: { capability: string; expectedVersion: number; settings: unknown }) {

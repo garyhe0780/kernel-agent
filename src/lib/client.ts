@@ -5,7 +5,7 @@ import type { ProjectSnapshot } from '@/kernel/projects'
 
 export type BusinessRecord = { id: string; capability: string; entity: string; data: RecordData; version: number; createdAt: string; updatedAt: string }
 export type CapabilitySnapshot = { slug: string; version: number; definition: Definition }
-export type Proposal = { id: string; capability: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string; proposerName?: string; input?: RecordData }
+export type Proposal = { executionMode?: 'review' | 'automatic'; kind?: 'action' | 'create'; id: string; capability: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string; proposerName?: string; input?: RecordData }
 export type { ProjectSnapshot }
 export type Snapshot = {
   model?: { configured: boolean }

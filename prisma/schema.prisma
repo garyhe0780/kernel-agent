@@ -73,6 +73,8 @@ model Workspace {
   capabilities Capability[]
   records      BusinessRecord[]
   changes      ChangeSet[]
+  agentRuns    AgentRun[]
+  embeddedOperations EmbeddedOperation[]
   executions   Execution[]
 }
 
@@ -176,6 +178,8 @@ model BusinessRecord {
 }
 
 model ChangeSet {
+  executionMode     String    @default("review")
+  kind              String    @default("action")
   id                String    @id @default(cuid())
   workspaceId       String
   capability        String
@@ -198,6 +202,7 @@ model ChangeSet {
   workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status, createdAt])
+  @@index([agentCredentialId, createdAt])
 }
 
 model Execution {
@@ -302,4 +307,53 @@ model BuildJob {
   @@unique([planId, planVersion])
   @@index([workspaceId, planId])
   @@index([status, leaseUntil])
+}
+
+model AgentRun {
+  id                String @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentCredentialId String
+  idempotencyKey    String
+  steps             Json
+  receipts          Json @default("[]")
+  nextStep          Int @default(0)
+  revision          Int @default(0)
+  status            String @default("queued")
+  error             Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@unique([agentCredentialId, idempotencyKey])
+  @@index([status, updatedAt])
+  @@index([workspaceId, agentCredentialId])
+}
+
+model EmbeddedOperation {
+  id             String @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId         String
+  idempotencyKey String
+  request        Json
+  plan           Json?
+  leaseToken     String?
+  leaseUntil     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@unique([workspaceId, userId, idempotencyKey])
+}
+
+model AgentModelCall {
+  id String @id @default(cuid())
+  credentialId String
+  requestId String
+  createdAt DateTime @default(now())
+  @@index([credentialId, createdAt])
+  @@index([requestId])
+}
+
+model AgentWorkerHealth {
+  id String @id
+  lastSuccessAt DateTime?
+  lastFailureAt DateTime?
 }

@@ -104,7 +104,7 @@ export function ProjectFrame({
     <div className="app app-desk"><a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="desk-topbar">
         <div className="desk-topbar-app">
-        {workspace ? <Link to="/" className="workspace-brand" aria-label="Kernel workspace" onClick={() => setNavOpen(false)}><span className="desk-app-icon"><Layers3 /></span><strong>Kernel</strong></Link> : applicationUser && snapshot.projects.length < 2 ? <span className="app-switcher-trigger"><span className="desk-app-icon"><Layers3 /></span><strong>{name}</strong></span> : <DialogTrigger isOpen={switcherOpen} onOpenChange={setSwitcherOpen}>
+        {workspace ? <Link to="/workspace" className="workspace-brand" aria-label="Kernel workspace" onClick={() => setNavOpen(false)}><span className="desk-app-icon"><Layers3 /></span><strong>Kernel</strong></Link> : applicationUser && snapshot.projects.length < 2 ? <span className="app-switcher-trigger"><span className="desk-app-icon"><Layers3 /></span><strong>{name}</strong></span> : <DialogTrigger isOpen={switcherOpen} onOpenChange={setSwitcherOpen}>
           <Button variant="ghost" className="app-switcher-trigger" aria-label={`Switch application, current application: ${name}`}>
             <span className="desk-app-icon"><Layers3 /></span><strong>{name}</strong><ChevronsUpDown />
           </Button>
@@ -112,7 +112,7 @@ export function ProjectFrame({
             <Dialog className="app-switcher-dialog" aria-label="Switch application">
               <nav className="app-switcher-list" aria-label="Applications">
                 {snapshot.projects.map(project => <Link key={project.slug} to="/p/$projectSlug" params={{ projectSlug: project.slug }} aria-current={project.slug === slug ? 'page' : undefined} onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>{project.name}{project.demo ? <small>Demo</small> : null}</Link>)}
-                {owner ? <Link className="app-switcher-all" aria-current={workspace ? 'page' : undefined} to="/" onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>Back to workspace</Link> : null}
+                {owner ? <Link className="app-switcher-all" aria-current={workspace ? 'page' : undefined} to="/workspace" onClick={() => { setSwitcherOpen(false); setNavOpen(false) }}>Back to workspace</Link> : null}
               </nav>
             </Dialog>
           </Popover>
@@ -124,10 +124,10 @@ export function ProjectFrame({
       <aside id="application-navigation" className="nav desk-nav" data-open={navOpen}>
         <div className="desk-nav-scroll">
         {settingsNavigation ? settingsNavigation(() => setNavOpen(false)) : <>
-        {!workspace && owner ? <Link to="/" className="nav-item desk-back-link" onClick={() => setNavOpen(false)}><ArrowLeft /><span>Back to workspace</span></Link> : null}
+        {!workspace && owner ? <Link to="/workspace" className="nav-item desk-back-link" onClick={() => setNavOpen(false)}><ArrowLeft /><span>Back to workspace</span></Link> : null}
         <nav className="nav-list" aria-label={workspace ? 'Workspace navigation' : `${name} navigation`}>
           {workspace ? <>
-            <Link to="/" className="nav-item" activeOptions={{ exact: true }} aria-current={workspacePage === 'overview' ? 'page' : undefined} onClick={() => setNavOpen(false)}><House /><span>Overview</span></Link>
+            <Link to="/workspace" className="nav-item" activeOptions={{ exact: true }} aria-current={workspacePage === 'overview' ? 'page' : undefined} onClick={() => setNavOpen(false)}><House /><span>Overview</span></Link>
             <Link to="/applications" className="nav-item" aria-current={workspacePage === 'applications' ? 'page' : undefined} onClick={() => setNavOpen(false)}><LayoutGrid /><span>Applications</span></Link>
             {applicationUser ? null : <Link to="/catalog" className="nav-item" aria-current={workspacePage === 'catalog' ? 'page' : undefined} onClick={() => setNavOpen(false)}><Boxes /><span>Catalog</span></Link>}
             {applicationUser ? null : <Link to="/inbox" className="nav-item" aria-current={workspacePage === 'inbox' ? 'page' : undefined} onClick={() => setNavOpen(false)}><Inbox /><span>Inbox</span></Link>}

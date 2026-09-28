@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { createProposalSchema, recordQuerySchema } from '../kernel/record-operations'
 import type { AgentAccess } from '../kernel/agent-access.server'
 import { Kernel, KernelError } from '../kernel/engine.server'
 
@@ -23,6 +24,22 @@ export async function handleAgentCredential(request: Request, access: AgentAcces
     const body = await request.text()
     if (body.length > 128000) throw new KernelError('TOO_LARGE', 'Request exceeds the size limit.', 413)
     const raw = JSON.parse(body)
+    if (raw?.type === 'start_run' || raw?.type === 'manage_run') {
+      const { type, ...command } = raw
+      return reply(type === 'start_run' ? await kernel.startAgentRun(p, command) : await kernel.agentRun(p, command))
+    }
+    if (raw?.type === 'execute') {
+      const { type: _type, ...command } = raw
+      return reply(await kernel.executeAgent(p, command))
+    }
+    if (raw?.type === 'stage_create') {
+      const { type: _type, ...command } = createProposalSchema.extend({ type: z.literal('stage_create') }).parse(raw)
+      return reply(await kernel.stageCreate(p, command))
+    }
+    if (raw?.type === 'query_records') {
+      const { type: _type, ...query } = recordQuerySchema.extend({ type: z.literal('query_records') }).parse(raw)
+      return reply(await kernel.queryRecords(p, query))
+    }
     if (raw?.type !== 'stage') throw new KernelError('FORBIDDEN', 'Agent credentials can only stage proposals.', 403)
     return reply(await kernel.stage(p, stage.parse(raw)))
   } catch (error) {

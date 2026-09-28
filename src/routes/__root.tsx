@@ -7,6 +7,6 @@ export const Route = createRootRoute({
     links: [{ rel: 'stylesheet', href: stylesheet }, { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
   }),
   component: () => <html lang="en"><head><HeadContent /></head><body><Outlet /><Scripts /></body></html>,
-  notFoundComponent: () => <main className="auth-page"><h1>Page not found</h1><a href="/">Return to your workspace</a></main>,
+  notFoundComponent: () => <main className="auth-page"><h1>Page not found</h1><a href="/workspace">Return to your workspace</a></main>,
   errorComponent: ({ error }) => <main className="auth-page"><h1>Workspace unavailable</h1><p>{error instanceof Error ? error.message : 'The workspace could not be opened.'}</p><a href="/">Try again</a></main>,
 })

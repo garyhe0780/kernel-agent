@@ -1,0 +1,37 @@
+{
+  "startedAt": "2026-09-27T15:06:12.034Z",
+  "mode": "deterministic",
+  "model": null,
+  "journeys": [
+    {
+      "pattern": "crm",
+      "mode": "deterministic",
+      "modelCalls": 1,
+      "checks": [
+        "Scoped builder publishes an empty application from the catalog",
+        "Deterministic planner produces the requested scoped three-step workflow",
+        "Creation waits for a human; review creates exactly one correctly linked record",
+        "Restart recovery preserves the automatic middle step and reviewed final transition",
+        "Submission replay, targeted terminal-state query, and human/agent audit attribution agree",
+        "Cancellation closes its pending proposal without creating another record"
+      ],
+      "status": "passed"
+    },
+    {
+      "pattern": "issues",
+      "mode": "deterministic",
+      "modelCalls": 1,
+      "checks": [
+        "Scoped builder publishes an empty application from the catalog",
+        "Deterministic planner produces the requested scoped three-step workflow",
+        "Creation waits for a human; review creates exactly one correctly linked record",
+        "Restart recovery preserves the automatic middle step and reviewed final transition",
+        "Submission replay, targeted terminal-state query, and human/agent audit attribution agree",
+        "Cancellation closes its pending proposal without creating another record"
+      ],
+      "status": "passed"
+    }
+  ],
+  "status": "passed",
+  "failure": null
+}

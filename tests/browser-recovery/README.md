@@ -26,3 +26,19 @@ Open `/studio.html` on the same fixture server. It renders ApplicationStudio and
 This fixture covers UI sequencing with synthetic responses; server versioning and publication authorization remain covered by kernel tests.
 
 The studio fixture now persists its synthetic plan/job in sessionStorage. Building pauses on an injected field-generation failure after one saved task. Close/reopen or reload to recover that status, then Retry failed task; the preview should open without a second plan confirmation. Close remains enabled during the queued/running job. Publication is never automatic.
+
+## Scoped application assistant
+
+Open `/assistant.html`. It renders the actual ApplicationAssistant with synthetic fetch responses. The fixture blocks other requests; no provider, authentication, or application database is used.
+
+1. Select Synthetic CRM agent. Require human review must be the default.
+2. Enter a task and choose Plan task. The first request fails; task text and selection must remain.
+3. Retry unchanged. Request evidence must show `sameRetryKey: true`, and the run must display Waiting with the Inbox explanation.
+4. Cancel run. It becomes Cancelled and Advance/Cancel controls disappear. Reload: the recent run is restored from fixture session storage (unsaved task text is not persisted).
+5. Select the credential and opt into automatic operations. Verify the warning. Submit and retry the synthetic failure; request evidence shows `automatic: true` and the same key.
+6. Advance run. The synthetic response produces Completed, 3/3 steps. This tests rendering; actual human review and policies are verified in the database journey tests.
+7. Toggle narrow layout to inspect the component at 350px width. This is a narrow-container check, not a real mobile-device test.
+
+Observed on 2026-09-27: all steps above passed. Evidence: `validation/agent-acceptance/browser-completed.png` and `.txt`. These checks do not establish authenticated browser integration or live-model accuracy.
+
+Run inspection fixture: open `/run-inspection.html` on the same fixture server. It uses the actual assistant with synthetic cancelled and rejected runs. Expand “Inspect steps and history” and “Input and proposed changes”; check applied versus cancelled outcomes, preserved effects guidance, cancellation actor/time, disabled retry for the rejected proposal, and the Open record callback. Inspect at desktop and 390px width. Browser verification of this fixture was blocked on 2026-09-28 by an unavailable browser automation service.

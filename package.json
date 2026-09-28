@@ -13,6 +13,7 @@
     "db:migrate": "node --import tsx scripts/migrate-local.ts",
     "setup": "node --import tsx scripts/setup.ts && prisma generate && node --import tsx scripts/migrate-local.ts",
     "check": "pnpm typecheck && pnpm test && pnpm build",
+    "accept:agent": "node --import tsx scripts/accept-agent.ts",
     "accept:model": "node --import tsx scripts/accept-model.ts",
     "test:browser-recovery": "vite --config tests/browser-recovery/vite.config.ts --host 127.0.0.1 --port 3010 --strictPort",
     "worker": "node --import tsx scripts/build-worker.ts",

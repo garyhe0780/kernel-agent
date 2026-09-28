@@ -1,0 +1,34 @@
+Browser tab: 1, Title: "Assistant recovery acceptance", URL: "http://127.0.0.1:3011/assistant.html".
+1 AXWebArea Assistant recovery acceptance, URL: 127.0.0.1:3011/assistant.html
+	2 container
+		3 heading Assistant recovery acceptance, Value: 1
+			4 text Assistant recovery acceptance
+		5 text Actual component, synthetic transport. No live API, credentials or database.
+		6 button Toggle narrow layout
+		7 container
+			8 heading Application assistant, Value: 2
+				9 text Application assistant
+			10 button Description: Close assistant, ID: react-aria9241407810-_r_0_
+		11 text Choose agent access, then describe a task. The assistant can find records and plan creation or actions. Review is the default.
+		12 text Agent access
+		13 pop up button (collapsed) Synthetic CRM agent Agent access, ID: react-aria9241407810-_r_4_, Secondary Actions: Expand
+			14 text Synthetic CRM agent
+		15 text Execution
+		16 pop up button (collapsed) Allow granted automatic operations Execution, ID: react-aria9241407810-_r_12_, Secondary Actions: Expand
+			17 text Allow granted automatic operations
+		18 text The run may apply explicitly granted operations without review. Other operations still require approval.
+		19 text Task
+		20 text field (settable) Task, Value: Create a synthetic issue and start it, ID: react-aria9241407810-_r_c_
+		21 button Plan task, ID: react-aria9241407810-_r_h_
+		28 text Run saved. Synthetic reviewed creation and workflow.
+		29 button New task, ID: react-aria9241407810-_r_1n_
+		22 heading Recent runs, Value: 3
+			23 text Recent runs
+		30 container
+			31 text COMPLETED 3  /  3  steps ·  run-0002
+		24 container
+			25 text CANCELLED 0  /  3  steps ·  run-0001
+		26 container Request evidence
+			27 text {"requests":[{"key":"67ae5b36-763b-4449-85d7-0ae7666ce5ba","automatic":true},{"key":"67ae5b36-763b-4449-85d7-0ae7666ce5ba","automatic":true}],"sameRetryKey":true}
+
+The focused UI element is 1 AXWebArea Assistant recovery acceptance, URL: 127.0.0.1:3011/assistant.html

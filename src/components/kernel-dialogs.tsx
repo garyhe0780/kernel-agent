@@ -230,10 +230,11 @@ export function RecordFields({ definition, data, records = [], showEmpty = false
   )
 }
 
-export function PendingApply({ record, proposal, definition, records = [], busy, canReview, onReject, onApply }: {
-  record: BusinessRecord
+export function PendingApply({ record, proposal, definition, definitionVersion, records = [], busy, canReview, onReject, onApply }: {
+  record?: BusinessRecord
   proposal: Proposal
   definition: Definition
+  definitionVersion?: number
   records?: BusinessRecord[]
   busy: boolean
   canReview: boolean
@@ -243,24 +244,25 @@ export function PendingApply({ record, proposal, definition, records = [], busy,
   const action = definition.actions.find(item => item.name === proposal.action)
   const fields = Object.fromEntries(Object.entries(definition.entity.fields).filter(([key]) => proposal.before[key] !== proposal.after[key]))
   const changed = { ...definition, entity: { ...definition.entity, fields } }
-  const stale = record.version !== proposal.recordVersion
+  const creating = proposal.kind === 'create'
+  const stale = (definitionVersion !== undefined && definitionVersion !== proposal.definitionVersion) || (!creating && (!record || record.version !== proposal.recordVersion))
   return (
     <section className="pending-panel" aria-label="Review proposed change">
-      <h3>Review {action?.label.toLowerCase() ?? proposal.action}</h3>
+      <h3>{creating ? `Create ${definition.entity.label.toLowerCase()}: ${proposal.after.title}` : `Review ${action?.label.toLowerCase() ?? proposal.action}`}</h3>
       <Badge variant="warning">Pending human review</Badge>
       <p>{proposal.proposerName ?? (proposal.actorKind === 'agent' ? 'Agent' : 'Workspace member')} · {date(proposal.createdAt)}</p>
-      {stale ? <Alert variant="warning">This record changed after the proposal. Reject it and create a fresh proposal.</Alert> : null}
+      {stale ? <Alert variant="warning">This record changed after the proposal, or its definition changed. Reject it and create a fresh proposal.</Alert> : null}
       <div className="diff">
-        <div className="diff-col"><h4>Before</h4><RecordFields definition={changed} data={proposal.before} records={records} showEmpty /></div>
+        <div className="diff-col"><h4>Before</h4>{creating ? <p>No record exists yet.</p> : <RecordFields definition={changed} data={proposal.before} records={records} showEmpty />}</div>
         <div className="diff-col"><h4>Proposed</h4><RecordFields definition={changed} data={proposal.after} records={records} showEmpty /></div>
       </div>
       {Object.keys(fields).length === 0 ? <p>No field values change.</p> : null}
-      {Object.keys(proposal.input ?? {}).length ? <details><summary>Submitted information</summary><RecordFields definition={{ ...definition, entity: { ...definition.entity, fields: action?.input ?? {} } }} data={proposal.input ?? {}} records={records} showEmpty /></details> : null}
+      {Object.keys(proposal.input ?? {}).length ? <details><summary>Submitted information</summary><RecordFields definition={{ ...definition, entity: { ...definition.entity, fields: creating ? Object.fromEntries(Object.entries(definition.entity.fields).filter(([, field]) => field.editable)) : action?.input ?? {} } }} data={proposal.input ?? {}} records={records} showEmpty /></details> : null}
       <details><summary>Policy checks ({proposal.checks.filter(check => check.passed).length}/{proposal.checks.length} passed)</summary>{proposal.checks.map(check => <div className="check" key={check.id}><span>{check.label}: {check.message}</span><Badge variant={check.passed ? 'success' : 'danger'}>{check.passed ? 'Passed' : 'Blocked'}</Badge></div>)}</details>
-      <p>Applying commits these changes to {String(record.data.title)}. The server rechecks access, versions and policies.</p>
+      <p>{creating ? "Approval creates this record once. The server rechecks permission, definition version, field values and relationships." : `Applying commits these changes to ${String(record?.data.title)}. The server rechecks access, versions and policies.`}</p>
       {canReview ? <div className="actions">
         <Button variant="outline" disabled={busy} onPress={onReject}>Reject proposal</Button>
-        <Button disabled={busy || stale} onPress={onApply}>{busy ? <Spinner data-icon="inline-start" /> : null}Apply reviewed change</Button>
+        <Button disabled={busy || stale} onPress={onApply}>{busy ? <Spinner data-icon="inline-start" /> : null}{creating ? "Create reviewed record" : "Apply reviewed change"}</Button>
       </div> : <p className="muted">An owner must apply this change.</p>}
     </section>
   )

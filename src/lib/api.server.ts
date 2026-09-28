@@ -1,3 +1,6 @@
+import { EmbeddedAgent } from '../kernel/embedded-agent.server'
+import { embeddedOperationSchema } from '../kernel/embedded-agent'
+import { agentRunSchema, agentRunCommandSchema } from '../kernel/agent-runs'
 import { BuildJobs } from '../kernel/build-jobs.server'
 import { buildJobResponse } from './build-job-stream.server'
 import { progressResponse } from './progress-stream.server'
@@ -9,12 +12,17 @@ import { handleAgentCredential } from './agent-api.server'
 import { dispatchApplicationBuild, getRuntime } from './runtime.server'
 import { commandAllows, type KernelCommandName } from '../kernel/commands'
 import { KernelError } from '../kernel/engine.server'
+import { createProposalSchema } from '../kernel/record-operations'
 import { purchasingAssembly } from '../kernel/application'
-import { clarifyApplication, modelStatus, modelSettings, testModelConnection, planOperation, planApplication } from '../kernel/model.server'
+import { clarifyApplication, modelStatus, modelSettings, testModelConnection, planApplication } from '../kernel/model.server'
 import { authUrl } from './env.server'
 import type { Principal } from '../kernel/definition'
 
 const commandSchema = z.discriminatedUnion('type', [
+  agentRunSchema.extend({ type: z.literal('start_run') }),
+  agentRunCommandSchema.extend({ type: z.literal('manage_run') }),
+  createProposalSchema.extend({ type: z.literal('stage_create') }),
+  createProposalSchema.extend({ type: z.literal('execute'), operation: z.enum(['create', 'action']), recordId: z.string().min(1).optional(), action: z.string().min(1).optional() }),
   z.object({ type: z.literal('retry_build'), id: z.string().min(1) }).strict(),
   z.object({ type: z.literal('invite_member'), email: z.string().email().max(254), role: z.enum(['owner', 'operator']) }).strict(),
   z.object({ type: z.literal('revoke_invitation'), id: z.string().min(1) }).strict(),
@@ -39,7 +47,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('example') }).strict(),
   z.object({ type: z.literal('save_draft'), id: z.string().optional(), expectedVersion: z.number().int().positive().optional(), brief: z.string().max(4000), definition: z.unknown().optional(), assembly: z.unknown().optional(), pattern: z.string().min(1).max(80).optional() }).strict(),
   z.object({ type: z.literal('publish_draft'), id: z.string(), expectedVersion: z.number().int().positive(), previewToken: z.string().optional() }).strict(),
-  z.object({ type: z.literal('operate'), project: z.string().min(1), instruction: z.string().trim().min(5).max(2000), idempotencyKey: z.string().min(8).max(100) }).strict(),
+  embeddedOperationSchema.extend({ type: z.literal('operate') }),
   z.object({ type: z.literal('create'), capability: z.string().min(1), data: z.record(z.string(), z.unknown()) }).strict(),
   z.object({ type: z.literal('stage'), recordId: z.string().min(1), action: z.string().min(1), input: z.record(z.string(), z.unknown()).default({}), idempotencyKey: z.string().min(8).max(100) }).strict(),
   z.object({ type: z.literal('review'), changeId: z.string().min(1), decision: z.enum(['apply', 'reject']) }).strict(),
@@ -77,7 +85,7 @@ async function queuedBuild(job: Awaited<ReturnType<BuildJobs['start']>>) {
 
 export async function handleKernel(request: Request, agent = false) {
   try {
-    const { kernel, buildJobs, agentAccess, auth } = await getRuntime()
+    const { db, kernel, buildJobs, agentAccess, auth } = await getRuntime()
     if (request.headers.has('authorization')) {
       if (agent) return handleAgentCredential(request, agentAccess, kernel)
       throw new KernelError('FORBIDDEN', 'Agent credentials are accepted only at /api/agent.', 403)
@@ -91,6 +99,8 @@ export async function handleKernel(request: Request, agent = false) {
         if (request.headers.get('accept')?.includes('text/event-stream')) return buildJobResponse(() => buildJobs.get(p, id), job, Number(query.get('after')) || 0)
         return response(job)
       }
+      if (!agent && query.has('operationHealth')) return response(await kernel.agentWorkerHealth(p))
+      if (!agent && query.has('operationRuns')) return response(await new EmbeddedAgent(db, kernel, agentAccess).recent(p, query.get('operationRuns')!))
       if (!agent && query.has('buildForPlan')) return response(await buildJobs.forPlan(p, query.get('buildForPlan')!))
       if (!agent && new URL(request.url).searchParams.has('workspaces')) return response(await kernel.listWorkspaces(p))
       if (!agent && new URL(request.url).searchParams.has('settings')) return response({ ...await kernel.workspaceSettings(p), model: modelSettings() })
@@ -167,14 +177,14 @@ export async function handleKernel(request: Request, agent = false) {
         throw new KernelError('PLAN_REQUIRED', 'Open the application planner and confirm a plan before building.', 409)
       }
       case 'operate': {
-        const state = await kernel.snapshot(p, command.project)
-        const result = await planOperation({ instruction: command.instruction, records: state.records.slice(0, 100), capabilities: state.capabilities.map(c => c.definition), pending: state.changes.filter(c => c.status === 'pending').map(c => c.recordId) })
-        if (!result.recordId || !result.action) return response({ explanation: result.explanation, status: 'no_action' })
-        if (!state.records.some(r => r.id === result.recordId)) throw new KernelError('FORBIDDEN', 'The agent selected a record outside this project.', 403)
-        const staged = await kernel.stage({ ...p, kind: 'agent' }, { recordId: result.recordId, action: result.action, input: result.input, idempotencyKey: command.idempotencyKey })
-        return response({ ...staged, explanation: result.explanation })
+        const { type: _type, ...input } = command
+        return response(await new EmbeddedAgent(db, kernel, agentAccess).operate(p, input))
       }
       case 'create': return response(await kernel.createRecord(p, command.data, command.capability))
+      case 'start_run': { const { type: _type, ...input } = command; return response(await kernel.startAgentRun(p, input)) }
+      case 'manage_run': { const { type: _type, ...input } = command; return response(await kernel.agentRun(p, input)) }
+      case 'execute': { const { type: _type, ...input } = command; return response(await kernel.executeAgent(p, input)) }
+      case 'stage_create': { const { type: _type, ...input } = command; return response(await kernel.stageCreate(p, input)) }
       case 'stage': return response(await kernel.stage(p, command))
       case 'review': return response(await kernel.review(p, command.changeId, command.decision))
       case 'publish_settings': return response(await kernel.publishSettings(p, command))

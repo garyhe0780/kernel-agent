@@ -1,0 +1,83 @@
+Browser tab: 2, Title: "Kernel — Business workspace", URL: "http://localhost:3023/p/app-cmujz7z9d0013iazl3hmfykmz".
+1 AXWebArea Kernel — Business workspace, URL: localhost:3023/p/app-cmujz7z9d0013iazl3hmfykmz
+	2 container
+		3 container Notifications alt+T
+		4 link Description: Skip to main content, Value: localhost:3023/p/app-cmujz7z9d0013iazl3hmfykmz#main-content
+		5 button (collapsed) Description: Switch application, current application: Team CRM, ID: react-aria8039039054-_r_1_, Secondary Actions: Expand
+			6 text Team CRM
+		7 button (collapsed) Description: Switch workspace, current workspace: Browser's workspace, ID: react-aria8039039054-_r_5_, Secondary Actions: Expand
+		8 text Team CRM
+		9 container application-navigation
+			10 link Description: Back to workspace, Value: localhost:3023/
+			11 container Team CRM navigation
+				12 button Opportunities 1, ID: react-aria8039039054-_r_a_
+					13 text Opportunities
+					14 text 1
+				15 button Pipeline overview 1, ID: react-aria8039039054-_r_c_
+					16 text Pipeline overview
+					17 text 1
+				18 button Opportunity board 1, ID: react-aria8039039054-_r_e_
+					19 text Opportunity board
+					20 text 1
+				21 button Customers 1, ID: react-aria8039039054-_r_g_
+					22 text Customers
+					23 text 1
+				24 button Active customers 1, ID: react-aria8039039054-_r_i_
+					25 text Active customers
+					26 text 1
+				27 button Review opportunitys 0, ID: react-aria8039039054-_r_k_
+					28 text Review opportunitys
+					29 text 0
+			30 button Invite user, ID: react-aria8039039054-_r_m_
+			31 link Description: Configure application, Value: localhost:3023/p/app-cmujz7z9d0013iazl3hmfykmz/build
+			32 text B
+			33 text Browser acceptance owner
+			34 text Owner
+			35 button Description: Sign out, ID: react-aria8039039054-_r_o_
+			36 link Description: Built with kernel., Value: localhost:3023/
+		37 container main-content
+			38 container
+				39 heading Pipeline overview, Value: 1
+					40 text Pipeline overview
+				54 text Opportunitys ·  Track customers and sales opportunities, with a reviewed conversion for every deal.
+				42 checkbox Assistant, Value: 1, ID: react-aria8039039054-_r_q_
+				43 button New opportunity, ID: react-aria8039039054-_r_s_
+					44 text New 
+					45 text opportunity
+			55 container Opportunity overview
+				56 content list
+					57 container
+						58 text Records 1 opportunity  in this view
+					59 container
+						60 text Created this week 1 0  in the prior 7 days
+				61 heading Status, Value: 2
+					62 text Status
+				63 container
+					88 container
+						89 image
+				64 content list
+					65 container
+						66 text Draft  ·  0
+					67 container
+						68 text Open  ·  0
+					69 container
+						70 text Converted  ·  1
+					71 container
+						72 text Lost  ·  0
+			73 container Description: Record details, ID: record-detail
+				74 container
+					75 heading Application assistant, Value: 2
+						76 text Application assistant
+					77 button Description: Close assistant, ID: react-aria8039039054-_r_1h_
+					78 text Choose agent access, then describe a task. The assistant can find records and plan creation or actions. Review is the default.
+					79 text Agent access
+					80 pop up button (collapsed) Choose a credential Agent access, ID: react-aria8039039054-_r_1l_, Secondary Actions: Expand
+						81 text Choose a credential
+					82 text Task
+					83 text field (settable) Task, ID: react-aria8039039054-_r_1t_
+					84 button (disabled) Plan task, ID: react-aria8039039054-_r_22_
+					85 heading Recent runs, Value: 3
+						86 text Recent runs
+					87 text completed 3  /  3  steps ·  n9fdro8y
+
+The focused UI element is 42 checkbox Assistant, Value: 1, ID: react-aria8039039054-_r_q_

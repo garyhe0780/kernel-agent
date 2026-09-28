@@ -62,6 +62,6 @@ function LoginPage() {
   }
 
   if (session.data && app) return <JoinApplication token={app} />
-  if (session.data) return <Navigate to={pendingInvitation() ? "/settings" : "/"} />
+  if (session.data) return <Navigate to={pendingInvitation() ? "/settings" : "/workspace"} />
   return <AuthScreen mode={mode} invitationCode={code} applicationInvite={app} />
 }

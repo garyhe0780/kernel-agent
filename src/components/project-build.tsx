@@ -78,7 +78,7 @@ export function ProjectBuild({ projectSlug }: { projectSlug: string }) {
   if (!session.data) return <Navigate to="/login" search={{ mode: 'login' }} />
   if (!snapshot) {
     return error
-      ? <main className="auth-page"><Alert variant="danger">{error}</Alert><p><Link to="/">Back to projects</Link></p></main>
+      ? <main className="auth-page"><Alert variant="danger">{error}</Alert><p><Link to="/workspace">Back to projects</Link></p></main>
       : <LoadingShell />
   }
 
@@ -190,7 +190,7 @@ export function ProjectBuild({ projectSlug }: { projectSlug: string }) {
                     </div>
                   ) },
                   ...(snapshot.project?.editable ? [{ id: 'versions', label: 'Versions', panel: <Card><CardHeader><CardTitle>Published application versions</CardTitle><CardDescription>Definitions and migration summaries are retained for review. Restoring an older version is not supported yet.</CardDescription></CardHeader><CardContent><Button variant="outline" disabled={busy} onPress={() => run('Version history loaded.', async () => setHistory(await request(`/api/kernel?history=${encodeURIComponent(projectSlug)}`)))}>Load version history</Button>{history?.map(item => <div className="migration-change" key={item.version}><strong>Version {item.version}</strong><p className="muted">{date(item.createdAt)}</p><p>{item.version === 1 ? 'Initial publication' : `${item.migration.updatedRecordCount ?? 0} records updated · ${item.migration.changes?.length ?? 0} definition changes`}</p>{item.migration.changes?.length ? <details><summary>Definition changes</summary>{item.migration.changes.map((change, i) => <div key={i}><strong>{change.entity} · {change.label}</strong><p>Before: {change.before}</p><p>After: {change.after}</p></div>)}</details> : null}</div>)}</CardContent></Card> }] : []),
-                  { id: 'agents', label: 'Agents', panel: <AgentAccessPanel key={projectSlug} project={projectSlug} capabilities={snapshot.capabilities} /> },
+                  { id: 'agents', label: 'Agents', panel: <AgentAccessPanel key={projectSlug} project={projectSlug} capabilities={snapshot.capabilities} allowCreation={Boolean(snapshot.project?.editable)} /> },
                   { id: 'activity', label: 'Activity', panel: (
                     <Card>
                       <CardHeader>

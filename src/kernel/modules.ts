@@ -1,32 +1,20 @@
-import { definitionSchema, type Definition } from './definition'
+import { definitionSchema } from './definition'
 import { procurement } from './procurement'
-import type { RecordLayout } from './application-layouts'
-import type { SavedView } from './application-views'
+import { createModuleCatalog, type KernelModule, type ModuleSource } from './module-contract'
+import { milestoneModule } from './modules/milestone'
+export type { KernelModule } from './module-contract'
+
 import { composeSurface } from './blocks'
 import { resolveViewGrammar, type WorkingGrammar } from './grammars'
 
 /** Core catalog of assemblable modules. Applications are compiled from these; they are not generated entity schemas. */
 
-export type LinkPort = { field: string; target: string; label: string; required?: boolean }
+export type LinkPort = KernelModule['ports'][number]
+export function portRequired(port: Pick<LinkPort, 'required'>) { return port.required !== false }
+export type ModuleView = KernelModule['views'][number]
+type ModuleBody = Omit<ModuleSource, 'version' | 'contractVersion'>
 
-export function portRequired(port: LinkPort) {
-  return port.required !== false
-}
-
-export type ModuleView = Omit<SavedView, 'entity'>
-export type ModuleLayout = Omit<RecordLayout, 'entity'>
-
-export type KernelModule = {
-  id: string
-  defaultAlias: string
-  definition: Definition
-  ports: LinkPort[]
-  views: ModuleView[]
-  layout?: ModuleLayout
-  grammar?: WorkingGrammar
-}
-
-function requestModule(): KernelModule {
+function requestModule(): ModuleBody {
   const definition = structuredClone(procurement)
   delete definition.entity.fields.supplier
   definition.slug = 'request'
@@ -53,7 +41,7 @@ function requestModule(): KernelModule {
   }
 }
 
-function partyModule(): KernelModule {
+function partyModule(): ModuleBody {
   return {
     id: 'directory.party',
     defaultAlias: 'parties',
@@ -89,7 +77,7 @@ function partyModule(): KernelModule {
   }
 }
 
-function opportunityModule(): KernelModule {
+function opportunityModule(): ModuleBody {
   return {
     id: 'sales.opportunity',
     defaultAlias: 'opportunities',
@@ -141,7 +129,7 @@ function opportunityModule(): KernelModule {
   }
 }
 
-function projectModule(): KernelModule {
+function projectModule(): ModuleBody {
   return {
     id: 'work.project',
     defaultAlias: 'projects',
@@ -183,7 +171,7 @@ function projectModule(): KernelModule {
   }
 }
 
-function issueModule(): KernelModule {
+function issueModule(): ModuleBody {
   return {
     id: 'work.issue',
     defaultAlias: 'issues',
@@ -247,7 +235,7 @@ function issueModule(): KernelModule {
   }
 }
 
-function movementModule(): KernelModule {
+function movementModule(): ModuleBody {
   return {
     id: 'finance.movement',
     defaultAlias: 'movements',
@@ -300,7 +288,7 @@ function movementModule(): KernelModule {
   }
 }
 
-function ticketModule(): KernelModule {
+function ticketModule(): ModuleBody {
   return {
     id: 'support.ticket',
     defaultAlias: 'tickets',
@@ -343,10 +331,14 @@ function ticketModule(): KernelModule {
   }
 }
 
-export const kernelModules: KernelModule[] = [requestModule(), opportunityModule(), partyModule(), projectModule(), issueModule(), movementModule(), ticketModule()]
+export const moduleCatalog = createModuleCatalog([
+  ...[requestModule(), opportunityModule(), partyModule(), projectModule(), issueModule(), movementModule(), ticketModule()].map(mod => ({ ...mod, contractVersion: 1, version: 1 })),
+  milestoneModule,
+])
+export const kernelModules = moduleCatalog.list()
 
 export function listModules() {
-  return kernelModules
+  return moduleCatalog.list()
 }
 
 export function moduleGrammar(mod: KernelModule): WorkingGrammar {
@@ -368,8 +360,10 @@ export function moduleSurfaces(mod: KernelModule) {
 }
 
 export function catalogSnapshot() {
-  return kernelModules.map(mod => ({
+  return moduleCatalog.list().map(mod => ({
     id: mod.id,
+    version: mod.version,
+    contractVersion: mod.contractVersion,
     name: mod.definition.name,
     description: mod.definition.description,
     defaultAlias: mod.defaultAlias,
@@ -385,6 +379,6 @@ export function catalogSnapshot() {
 
 export type CatalogSnapshot = ReturnType<typeof catalogSnapshot>[number]
 
-export function moduleById(id: string) {
-  return kernelModules.find(item => item.id === id)
+export function moduleById(id: string, version = 1) {
+  return moduleCatalog.get(id, version)
 }

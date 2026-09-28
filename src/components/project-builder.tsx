@@ -31,7 +31,7 @@ function selectionFrom(assembly?: Draft['assembly']): ModuleSelection {
   return {
     name: assembly?.name ?? 'New application',
     description: assembly?.description ?? 'Assembled from Kernel catalog modules.',
-    modules: assembly?.modules.map(item => ({ use: item.use, as: item.as, name: item.name, label: item.label, settings: item.settings })) ?? [],
+    modules: assembly?.modules.map(item => ({ use: item.use, version: item.version ?? 1, as: item.as, name: item.name, label: item.label, settings: item.settings })) ?? [],
   }
 }
 

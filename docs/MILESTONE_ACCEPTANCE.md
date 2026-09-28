@@ -80,3 +80,60 @@ A separate synthetic QA Clarified Purchasing brief produced three questions abou
 Generation and one unchanged Retry build both returned the sanitized connection/timeout error. Answers remained editable and intact; no new draft or application was published. This proves question rendering and live failure recovery, not that a generated policy honors the answers. Do not count this scenario as passed. Evidence: `clarification-answers.txt`, `clarification-live-timeout.txt` and `clarification-retry-timeout.txt` under `.impeccable/review/live-browser/`. The browser tab is retained with answers for later retry; unsaved inputs are not crash-persistent. Provider generation from these confirmed answers and real-operator observations remain open.
 
 A subsequent unchanged browser retry also returned the connection/timeout error. No definition was produced or published. Review of the current policy engine confirms that its `eq`/`lte` conjunctions cannot express the requested conditional supplier check as one approval action. A passing result must explicitly disclose that unsupported requirement or provide a clearly explained supported alternative for review; it must not silently make supplier verification mandatory for all amounts or block every purchase above USD 2500. Exact single-action conditional enforcement would require a separately implemented policy capability. This limitation is not evidence that it caused the provider timeouts.
+
+## Scoped CRM and project-management journeys — 2026-09-27
+
+Deterministic end-to-end service acceptance passed for both catalog patterns, `crm` and `issues`. Each journey uses a new in-memory Postgres database loaded from committed migrations; it does not read the configured application database.
+
+- An authenticated construction credential saves and publishes the catalog application, with no preview records installed.
+- An owner creates a synthetic customer/project and issues a scoped operate credential.
+- The built-in assistant submits a three-step durable plan: reviewed creation, explicitly allowed automatic opening/start, then reviewed conversion/completion.
+- Fresh Kernel instances resume each checkpoint. Creation remains absent until approval, and the final status remains unchanged until final review.
+- Repeating the submission reuses its saved plan and run. Targeted queries find exactly one terminal record; the audit contains two human applies and one agent apply.
+- Cancelling a second creation run rejects its pending proposal and creates no duplicate record.
+
+Run `pnpm accept:agent` for this offline acceptance, or `node --import tsx scripts/accept-agent.ts`. It writes a JSON report in the OS temporary directory. The journeys are also included in `pnpm test`.
+
+Live mode is explicit: `pnpm accept:agent --live`. It sends generated application contracts and synthetic records to the configured provider and uses the same assertions, without mocking the planner. After explicit user authorization of the destination and synthetic payload, both live journeys passed with MiniMax-M3. Evidence: `validation/agent-acceptance/live.json` and `live-passed.log`. Earlier attempts were safely rejected: an out-of-scope action, an explanation over the schema limit, and transport retry keys incorrectly placed inside issue action inputs. The prompt now specifies a short explanation, the exact unprefixed action-name source, and business-only inputs; the runtime retains all original permission and input checks. The failed issue attempt left the record in Backlog. This is a successful synthetic acceptance run, not a model reliability benchmark.
+
+The real ApplicationAssistant component passed an isolated browser fixture: review default, failure text retention, same-key retry, review-pause copy, explicit automatic opt-in and warning, cancellation, completion rendering, saved-run reload and a 350px container. Screenshot and accessibility evidence are under `validation/agent-acceptance/`. The browser uses synthetic transport; database behavior is established separately by the service journeys. Full authenticated browser integration and real-operator observations remain open.
+
+Live acceptance follow-up verification: all 153 regression tests, TypeScript checking, whitespace checks and the production build passed. Only the planner prompt and its regression assertions changed in production behavior; no real workspace records or database migrations were modified. Full signed-in browser integration and real-operator trials remain open.
+
+## Signed-in scoped assistant browser journeys — 2026-09-27
+
+Both CRM and issues passed in the real application UI with a seeded synthetic owner account, real session authentication, the configured MiniMax-M3 provider, the real operation API, and the local run worker. No transport was mocked. Application publication, parent records and scoped credentials were prepared by `scripts/seed-browser-acceptance.ts`; this check does not claim browser creation of those fixtures.
+
+The owner signed in, selected the application credential, explicitly opted into granted automatic operations and requested three steps. Each creation proposal showed that no record existed yet and required **Create reviewed record**. After approval, the worker automatically opened the opportunity / started the issue. A reload showed the intermediate state and a second pending review. **Apply reviewed change** converted the opportunity / completed the issue. Both assistants then displayed **completed 3/3**. The CRM overview assistant was also checked at a 390×844 viewport.
+
+After stopping the server, `scripts/verify-browser-acceptance.ts` checked the temporary database: exactly one business record and one completed run per application; three applied receipts with modes review → automatic → review; human → agent → human audit actors; no human reviewer recorded for the automatic step. Evidence: `validation/agent-acceptance/signed-in-database.json`, `signed-in-crm.png`/`.txt`, `signed-in-issues.png`/`.txt`, and `signed-in-mobile.png`.
+
+This check found and fixed three integration defects:
+
+1. A grammar-specific CSS rule hid the assistant on overview pages even when its toggle was active. Inspector visibility now follows the existing explicit open/closed state.
+2. The built Node server externalized TanStack packages and could resolve older root installations missing `createRawStreamRPCPlugin` / `createServerHistory`. The server build now bundles the resolved TanStack dependency family.
+3. The Node output omitted SQL migrations expected by the embedded database at `dist/prisma/migrations`. The Node build now copies those migrations; the Cloudflare build does not include this Node-only copy step.
+
+Development reloads and another build replacing shared output interrupted initial attempts. The completed walkthrough ran from a private copy of the built output using the same NodeRequest/sendNodeResponse adapter as the preview server. The test server and temporary browser tab were stopped afterward. Existing application databases and concurrent workspace work were preserved.
+
+Validation: 153 regression tests passed; type checking and the Node production build passed. The built server was exercised through sign-in, page navigation, model planning, review and persisted completion—not just compilation. Cloudflare deployment was not exercised. This is agent-driven acceptance using synthetic data, not a real-operator trial or model reliability benchmark.
+
+## Run inspection and recovery — 2026-09-28
+
+Implemented authorized per-step proposal evidence, applied/waiting/rejected/failed/cancelled/not-started states, latest-50 audit history, record navigation, review inbox links, and recovery guidance. The server rejects futile retries after proposal rejection or invalid/stale access. Cancellation explicitly preserves applied effects.
+
+Validation: 155 tests pass, TypeScript and the production build pass. New integration coverage verifies owner/originating-credential isolation, mixed applied/cancelled receipts, cancellation audit identity, and rejected-proposal retry refusal. Synthetic UI fixture: `/run-inspection.html` under the browser-recovery Vite server. Live desktop/mobile browser verification remains pending: the computer-use browser service returned `nodeRepl.fetch request failed` twice. No new visual acceptance is claimed.
+
+## Execution limits and worker monitoring — 2026-09-28
+
+Implemented credential-serialized run admission and operation quotas, durable model-call reservations across retries, a single live planner per credential, bounded planning context/output and deadline cancellation, seven-day run expiry, and persistent worker health. Owners see heartbeat warnings, stalled queued runs, and deadlines in the assistant. Manual review cannot apply overdue pending run proposals; applied effects remain intact.
+
+Validation: 164 tests pass, including concurrent admission, replay without quota consumption, capacity recovery, deferred rate-limited steps, expiry/review refusal, owner-only health with tenant-scoped stalled counts, degraded-worker recovery, persistent model budgets, concurrent-planner refusal, timeout abort/lease cleanup, and oversized context refusal. TypeScript, production build, and the UI mechanical detector pass. Tests use isolated PGlite databases with the new migration; live PostgreSQL/Cloudflare deployment and live-provider acceptance of the tighter output cap were not run. The browser service timed out again, leaving desktop/mobile inspector and health rendering verification pending.
+
+Deployment requires `202609280001_agent_limits` plus regenerated Prisma and restarted web/worker processes. The current running user database was not migrated.
+
+## Public introduction and documentation — 2026-09-28
+
+Added an architecture-first public landing page for developers and agent builders at `/`, and nine searchable documentation guides at `/docs` and `/docs/:slug`. A labeled CRM/project walkthrough illustrates contracts, proposals, and review without touching data. The authenticated workspace moved to `/workspace`; login, workspace switching, invitation return links, and legacy `/?workspace=...` redirects preserve the workspace journey.
+
+Validation: 167 tests pass, TypeScript and production build pass, and 13 local HTTP checks verify public SSR routes, guide metadata, missing-guide 404, and the legacy workspace redirect (`validation/public-site/http.json`). Public rendering requires no session or database. An independent source review identified and confirmed a mobile navigation fix: the guide directory is a compact disclosure with the current guide visible and 44px targets. Browser automation timed out; desktop/mobile rendering, hydrated interactions, and the signed-in navigation flow remain visually unverified. The local preview is not a public deployment.

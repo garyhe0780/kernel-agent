@@ -13,7 +13,7 @@ export type Checkpoints = Record<string, unknown>
 export type PipelineTask = { key: string; message: string }
 
 const constraints = `You assemble Kernel applications from the catalog. Output a concrete JSON assembly, never a JSON Schema or an entities document. Never invent entities, fields, actions, SQL, integrations or automatic execution.
-Choose only listed module ids. Bind every required port with links {from:"alias.field", to:"alias"}. Fill only settings keys declared on those modules. Surfaces carry a grammar (overview, board, ledger, directory, detail) and must use views/layouts those modules provide. Prefer a listed pattern when the request matches purchasing, CRM, issues, payments, or support. Use stable aliases. Preserve an existing assembly on unrelated revisions. State unsupported requirements in assumptions. Do not invent date fields, calendars, FX conversion, SQL, or integrations.`
+Choose only listed module ids and set each instance version to its listed exact release. Match port targetVersion when wiring dependencies. Bind every required port with links {from:"alias.field", to:"alias"}. Fill only settings keys declared on those modules. Surfaces carry a grammar (overview, board, ledger, directory, detail) and must use views/layouts those modules provide. Prefer a listed pattern when the request matches purchasing, CRM, issues, payments, or support. Use stable aliases. Preserve an existing assembly on unrelated revisions. State unsupported requirements in assumptions. Do not invent date fields, calendars, FX conversion, SQL, or integrations.`
 
 export function nextBuildTask(checkpoints: Checkpoints): PipelineTask {
   if (!checkpoints.assembly) return { key: 'assembly', message: 'Choosing catalog modules and wiring them together.' }

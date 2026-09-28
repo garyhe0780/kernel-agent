@@ -1,3 +1,4 @@
+import { startAgentRunWorker } from '../kernel/agent-run-worker.server'
 import { AgentAccess } from '../kernel/agent-access.server'
 import { BuildJobs, startBuildWorker } from '../kernel/build-jobs.server'
 import { Kernel } from '../kernel/engine.server'
@@ -13,16 +14,19 @@ type Runtime = {
   auth: ReturnType<typeof createAuth>
 }
 
-const cache = globalThis as unknown as { kernelRuntime?: Promise<Runtime>; stopKernelBuildWorker?: () => void }
+const cache = globalThis as unknown as { kernelRuntime?: Promise<Runtime>; stopKernelBuildWorker?: () => void; stopKernelRunWorker?: () => void }
 
 async function createRuntime(): Promise<Runtime> {
   const db = await openDatabase()
   const buildJobs = new BuildJobs(db)
+  const kernel = new Kernel(db)
   if (!isCloudflareWorker()) {
+    cache.stopKernelRunWorker?.()
+    cache.stopKernelRunWorker = startAgentRunWorker(kernel)
     cache.stopKernelBuildWorker?.()
     cache.stopKernelBuildWorker = startBuildWorker(buildJobs)
   }
-  return { db, kernel: new Kernel(db), buildJobs, agentAccess: new AgentAccess(db), auth: createAuth(db) }
+  return { db, kernel, buildJobs, agentAccess: new AgentAccess(db), auth: createAuth(db) }
 }
 
 export function getRuntime() {

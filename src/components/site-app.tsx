@@ -34,7 +34,7 @@ export function SiteApp({ projectSlug }: { projectSlug: string }) {
   if (!session.data) return <Navigate to="/login" search={{ mode: 'login' }} />
   if (!snapshot) {
     return error
-      ? <main className="auth-page"><Alert variant="danger">{error}</Alert><p><Link to="/">Back to projects</Link></p></main>
+      ? <main className="auth-page"><Alert variant="danger">{error}</Alert><p><Link to="/workspace">Back to projects</Link></p></main>
       : <LoadingShell />
   }
 

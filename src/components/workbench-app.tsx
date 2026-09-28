@@ -1,3 +1,4 @@
+import { ApplicationAssistant } from './application-assistant'
 import { RecordBoard } from './record-board'
 import { RecordDetail } from './record-detail'
 import { RecordOverview } from './record-overview'
@@ -6,7 +7,7 @@ import { resolveViewGrammar } from '@/kernel/grammars'
 import { appShellForPattern } from '@/kernel/patterns'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from '@tanstack/react-router'
-import { Plus, Sparkles, ArrowDownWideNarrow, Search, ChevronRight, X, Clock3 } from 'lucide-react'
+import { Plus, Sparkles, ArrowDownWideNarrow, Search, ChevronRight, Clock3 } from 'lucide-react'
 import { Toaster } from 'sonner'
 import { ActionDialog, CreateEntityDialog, PendingApply } from '@/components/kernel-dialogs'
 import { LoadingShell, ProjectFrame } from '@/components/project-frame'
@@ -45,8 +46,6 @@ function cell(key: string, field: EntityField, data: RecordData) {
 export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
   const { session, snapshot, error, busy, run, refresh, keys } = useProject(projectSlug)
   const [entitySlug, setEntitySlug] = useState<string>()
-  const [instruction, setInstruction] = useState('')
-  const [agentResult, setAgentResult] = useState('')
   const [agentOpen, setAgentOpen] = useState(false)
   const [detailTab, setDetailTab] = useState('details')
   const [sort, setSort] = useState<'newest' | 'name'>()
@@ -88,7 +87,7 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
   if (!session.data) return <Navigate to="/login" search={{ mode: 'login' }} />
   if (!snapshot || !definition) {
     return error
-      ? <main className="auth-page"><Alert variant="danger">{error}</Alert><p><Link to="/">Back to projects</Link></p></main>
+      ? <main className="auth-page"><Alert variant="danger">{error}</Alert><p><Link to="/workspace">Back to projects</Link></p></main>
       : <LoadingShell />
   }
 
@@ -97,6 +96,7 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
   const selectedActions = selected
     ? definition.actions.filter(action => !pending && actionAvailable(definition, selected, action.name, snapshot.principal.role))
     : []
+  const creations = snapshot.changes.filter(change => change.kind === 'create' && change.status === 'pending' && change.capability === definition.slug)
   const pendingCount = snapshot.changes.filter(change => change.capability === definition.slug && change.status === 'pending' && snapshot.records.some(record => record.id === change.recordId && matchesView(record.data, view))).length
   const canReview = definition.reviewerRoles.includes(snapshot.principal.role)
   const columns = view?.columns.length ? view.columns.filter(key => key !== 'title' && key !== 'status').map(key => [key, definition.entity.fields[key]] as [string, EntityField]) : extraColumns(definition)
@@ -126,6 +126,10 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
           </header>
           <div className="main-body">
             {error ? <Alert variant="danger">{error}</Alert> : null}
+            {creations.length ? <section aria-label="Proposed new records"><h2>New records awaiting review · {creations.length}</h2>{creations.map(proposal => <PendingApply key={proposal.id} proposal={proposal} definition={definition} definitionVersion={capability?.version} records={snapshot.records} busy={busy} canReview={canReview}
+              onReject={() => run('Proposal rejected.', async () => { await request('/api/kernel', { type: 'review', changeId: proposal.id, decision: 'reject' }); await refresh() })}
+              onApply={() => run('Record created.', async () => { await request('/api/kernel', { type: 'review', changeId: proposal.id, decision: 'apply' }); await refresh() })}
+            />)}</section> : null}
             {view && shell === 'desk' ? <div className="saved-view-context"><span>Saved view · {view.filters.length ? `${view.filters.length} filter${view.filters.length === 1 ? '' : 's'}` : 'No filters'}</span><Button variant="ghost" size="sm" onPress={() => { setEntitySlug(definition.slug); chooseView(null) }}>All {nouns}</Button></div> : null}
             {overview || board || inbox || shell === 'tracker' || shell === 'dashboard' ? null : <div className="desk-views"><ToggleGroup label="Status" value={status} onChange={setStatus} options={[
               { value: 'all', label: `${view ? 'All in view' : `All ${nouns}`} · ${snapshot.records.filter(r => r.capability === definition.slug && matchesView(r.data, view)).length}` },
@@ -182,13 +186,7 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
               </Card>
               <aside className="inspector desk-inspector" id="record-detail" aria-label="Record details" hidden={!showInspector}>
                 {agentOpen ? (
-            <section className="desk-assistant"><header><h2>Application assistant</h2><Button variant="ghost" size="icon" aria-label="Close assistant" onPress={() => setAgentOpen(false)}><X /></Button></header><p className="muted">{snapshot.model?.configured ? 'Ask for one action. The agent reads this application’s records and proposes a change for owner review.' : 'The built-in model is not connected. Your workspace owner can configure it on the server. External agents can connect through Configure → Agents.'}</p><Field value={instruction} onChange={setInstruction}><FieldLabel>Task</FieldLabel><Input placeholder={`What would you like to do with your ${nouns}?`} /></Field><Button variant="outline" disabled={!snapshot.model?.configured || busy || instruction.trim().length < 5} onPress={() => run('Agent finished.', async () => {
-              const key = idempotencyKey(keys.current, `operate:${instruction}`)
-              const result = await request<ActionResult & { explanation: string }>('/api/kernel', { type: 'operate', project: projectSlug, instruction, idempotencyKey: key })
-              setAgentResult(`${result.status === 'staged' ? 'Proposal staged for review. ' : result.status === 'blocked' ? 'Blocked by policy. ' : ''}${result.explanation}${result.checks?.filter(c => !c.passed).map(c => ` ${c.message}`).join('') ?? ''}`)
-              keys.current.delete(`operate:${instruction}`)
-              await refresh()
-            })}>{busy ? <Spinner data-icon="inline-start" /> : null}Ask agent</Button>{agentResult ? <Alert>{agentResult}</Alert> : null}</section>
+            <ApplicationAssistant onOpenRecord={(capability, recordId) => { setViewId(null); setEntitySlug(capability); setQuery(''); setStatus('all'); setSelectedId(recordId); setAgentOpen(false); setDetailTab('details') }} key={projectSlug} project={projectSlug} owner={snapshot.principal.role === 'owner'} configured={Boolean(snapshot.model?.configured)} onClose={() => setAgentOpen(false)} onChange={refresh} />
 
 ) : selected ? (
                   <Card>

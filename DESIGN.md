@@ -247,6 +247,12 @@ Records use sentence-case table headers, fine row dividers, blue selected/hover 
 ### Dialogs
 Shared portal dialogs use Inter globally, the dialog-title hierarchy, rounded wrappers/content, a white surface, and the existing overlay shadow and scroll limits. Palette inheritance remains root-scoped outside the desk; do not claim a portal inherits application-scoped CSS variables.
 
+### Workspace Overview
+The Overview uses the existing desk palette, Inter, flat borders, and shared controls. Application tiles and the empty panel locally use 12px corners; the sample-demo panel uses 14px corners. These are scoped surface variants, not global replacements for ordinary cards. Its local heading and responsive composition are recorded in `docs/WORKSPACE_OVERVIEW.md`; the applications directory and builder retain their established treatments.
+
+### Workspace Catalog
+Catalog applies the same Operations desk identity to a Preview workbench: a searchable index beside one selected specimen and its details. White surfaces, a cool neutral preview stage, fine separators, compact Inter, and cobalt selection retain the established hierarchy. Its mobile index, distinct dense Ledger and comfortable Directory specimens, illustrative-data labels, and local preview framing are surface decisions documented in `docs/CATALOG.md`; they do not redefine shared tokens or application layouts.
+
 ## Do's and Don'ts
 
 ### Do:

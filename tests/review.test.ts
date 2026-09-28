@@ -56,3 +56,15 @@ test('capability settings render published keys without purchasing-specific fiel
   assert.match(tickets, /Publish version 4/)
   assert.doesNotMatch(tickets, /Approval Limit/)
 })
+
+test('creation review displays proposed fields without treating a missing record as stale', () => {
+  const creation: Proposal = { ...proposal, kind: 'create', action: '$create', recordVersion: 0, before: {}, after: { ...record.data, status: 'draft' }, input: { title: 'Office supplies' } }
+  const html = renderToStaticMarkup(createElement(PendingApply, { proposal: creation, definition: procurement, definitionVersion: 1, busy: false, canReview: true, onReject() {}, onApply() {} }))
+  assert.match(html, /No record exists yet/)
+  assert.match(html, /Office supplies/)
+  assert.match(html, /Create reviewed record/)
+  assert.doesNotMatch(html, /<button[^>]*disabled[^>]*>Create reviewed record/)
+  const stale = renderToStaticMarkup(createElement(PendingApply, { proposal: creation, definition: procurement, definitionVersion: 2, busy: false, canReview: true, onReject() {}, onApply() {} }))
+  assert.match(stale, /<button[^>]*disabled[^>]*>Create reviewed record/)
+  assert.doesNotMatch(stale, /<button[^>]*disabled[^>]*>Reject proposal/)
+})

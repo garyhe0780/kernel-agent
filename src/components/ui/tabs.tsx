@@ -10,7 +10,7 @@ export function Tabs({
   label: string
   value: string
   onChange: (value: string) => void
-  tabs: { id: string; label: string; panel: ReactNode }[]
+  tabs: { id: string; label: ReactNode; panel: ReactNode }[]
 }) {
   return (
     <AriaTabs className="tabs" selectedKey={value} onSelectionChange={key => onChange(String(key))}>

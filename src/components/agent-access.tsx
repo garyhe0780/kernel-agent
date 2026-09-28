@@ -1,3 +1,4 @@
+import { CREATE_ACTION } from '@/kernel/record-operations'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, Form } from './ui/form-field'
@@ -5,10 +6,10 @@ import { Input } from './ui/input'
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Empty, Spinner } from './ui/surfaces'
 import { date, request, type CapabilitySnapshot } from '@/lib/client'
 
-type Scope = { capability: string; action: string; version: number }
+type Scope = { capability: string; action: string; version: number; execution?: 'review' | 'automatic' }
 type Credential = { id: string; name: string; prefix: string; expiresAt: string; revokedAt: string | null; actions: Scope[] }
 
-export function AgentAccessPanel({ project, capabilities }: { project: string; capabilities: CapabilitySnapshot[] }) {
+export function AgentAccessPanel({ project, capabilities, allowCreation = false }: { project: string; capabilities: CapabilitySnapshot[]; allowCreation?: boolean }) {
   const [credentials, setCredentials] = useState<Credential[]>()
   const [selected, setSelected] = useState<Scope[]>([])
   const [secret, setSecret] = useState<{ token: string; credential: Credential }>()
@@ -26,7 +27,7 @@ export function AgentAccessPanel({ project, capabilities }: { project: string; c
   return <div className="stack">
     {error ? <Alert variant="danger">{error}</Alert> : null}
     {notice ? <Alert>{notice}</Alert> : null}
-    <Card><CardHeader><CardTitle>Connect an agent</CardTitle><CardDescription>Give an external agent access to this application’s records and selected actions. It can propose changes as an operator; an owner must review every proposal. To create applications from Cursor or Claude, issue a builder credential from Agents instead.</CardDescription></CardHeader>
+    <Card><CardHeader><CardTitle>Connect an agent</CardTitle><CardDescription>Give an external agent access to this application’s records and selected actions. Review is required by default. For published applications, you can explicitly permit individual operations to run automatically. To create applications from Cursor or Claude, issue a builder credential from Agents instead.</CardDescription></CardHeader>
       <CardContent>
         <Form onSubmit={event => {
           event.preventDefault()
@@ -42,13 +43,14 @@ export function AgentAccessPanel({ project, capabilities }: { project: string; c
             <Field name="name" isRequired isDisabled={busy} maxLength={80}><FieldLabel>Agent name</FieldLabel><Input placeholder="Purchasing assistant" /><FieldError /></Field>
             <Field name="days" type="number" isRequired isDisabled={busy} defaultValue="30"><FieldLabel>Expires in days (1–90)</FieldLabel><Input min={1} max={90} step={1} /><FieldError /></Field>
             <fieldset className="agent-actions" disabled={busy}><legend>Actions this agent may propose</legend>
-              {capabilities.map(cap => <div key={cap.slug}><h3>{cap.definition.name}</h3>{cap.definition.actions.filter(action => action.roles.includes('operator')).map(action => {
+              {capabilities.map(cap => <div key={cap.slug}><h3>{cap.definition.name}</h3>{[...(allowCreation ? [{ name: CREATE_ACTION, label: `Create ${cap.definition.entity.label.toLowerCase()}`, description: 'Propose new records for human review.' }] : []), ...cap.definition.actions.filter(action => action.roles.includes('operator'))].map(action => {
                 const checked = selected.some(s => s.capability === cap.slug && s.action === action.name)
-                return <label className="agent-action" key={action.name}><input type="checkbox" checked={checked} onChange={event => setSelected(current => event.target.checked ? [...current, { capability: cap.slug, action: action.name, version: cap.version }] : current.filter(s => !(s.capability === cap.slug && s.action === action.name)))} /><span><strong>{action.label}</strong><span className="muted">{action.description}</span></span></label>
+                return <div key={action.name}><label className="agent-action"><input type="checkbox" checked={checked} onChange={event => setSelected(current => event.target.checked ? [...current, { capability: cap.slug, action: action.name, version: cap.version }] : current.filter(s => !(s.capability === cap.slug && s.action === action.name)))} /><span><strong>{action.label}</strong><span className="muted">{action.description}</span></span></label>{checked && allowCreation ? <label className="agent-action"><input type="checkbox" checked={selected.find(scope => scope.capability === cap.slug && scope.action === action.name)?.execution === 'automatic'} onChange={event => setSelected(current => current.map(scope => scope.capability === cap.slug && scope.action === action.name ? { ...scope, execution: event.target.checked ? 'automatic' : 'review' } : scope))} /><span>Allow {action.label.toLowerCase()} without human review</span></label> : null}</div>
               })}</div>)}
             </fieldset>
             <p className="muted">This credential can read all records in this application. Selected actions are tied to their current definition version. A changed definition requires a new credential.</p>
-            <Button type="submit" disabled={busy || Boolean(secret)}>{busy ? <Spinner data-icon="inline-start" /> : null}Create agent credential</Button>
+            {selected.some(scope => scope.execution === 'automatic') ? <Alert variant="warning">This credential can immediately execute {selected.filter(scope => scope.execution === 'automatic').length} selected operations without human approval. Validation and business policies still apply. Revoke the credential to stop access.</Alert> : null}
+            <Button type="submit" disabled={busy || Boolean(secret)}>{busy ? <Spinner data-icon="inline-start" /> : null}{selected.some(scope => scope.execution === 'automatic') ? 'Create credential with automatic access' : 'Create agent credential'}</Button>
           </FieldGroup>
         </Form>
       </CardContent>
@@ -63,7 +65,7 @@ export function AgentAccessPanel({ project, capabilities }: { project: string; c
       <Button variant="outline" disabled={busy} onPress={() => void run(refresh)}>Refresh credentials</Button>
       {!credentials ? <p className="muted">Loading credentials…</p> : credentials.length === 0 ? <Empty title="No agents connected" /> : credentials.map(credential => {
         const state = credential.revokedAt ? 'Revoked' : new Date(credential.expiresAt).getTime() <= Date.now() ? 'Expired' : credential.actions.some(scope => !capabilities.some(cap => cap.slug === scope.capability && cap.version === scope.version)) ? 'Definition changed' : 'Active'
-        return <div className="migration-change" key={credential.id}><div className="builder-actions"><strong>{credential.name}</strong><Badge variant={state === 'Active' ? 'success' : 'warning'}>{state}</Badge></div><p className="muted">{credential.prefix}… · Expires {date(credential.expiresAt)}</p><ul>{credential.actions.map(scope => <li key={`${scope.capability}.${scope.action}`}>{capabilities.find(c => c.slug === scope.capability)?.definition.name ?? scope.capability} · {scope.action} · version {scope.version}</li>)}</ul>{!credential.revokedAt ? <Button variant="outline" disabled={busy} onPress={() => void run(async () => { await request('/api/kernel', { type: 'revoke_agent_credential', id: credential.id }); if (secret?.credential.id === credential.id) setSecret(undefined); await refresh(); setNotice(`${credential.name} access revoked.`) })}>Revoke {credential.name}</Button> : null}</div>
+        return <div className="migration-change" key={credential.id}><div className="builder-actions"><strong>{credential.name}</strong><Badge variant={state === 'Active' ? 'success' : 'warning'}>{state}</Badge></div><p className="muted">{credential.prefix}… · Expires {date(credential.expiresAt)}</p><ul>{credential.actions.map(scope => <li key={`${scope.capability}.${scope.action}`}>{capabilities.find(c => c.slug === scope.capability)?.definition.name ?? scope.capability} · {scope.action === CREATE_ACTION ? 'Record creation' : scope.action} · {scope.execution === 'automatic' ? 'Automatic execution allowed' : 'Human review required'} · version {scope.version}</li>)}</ul>{!credential.revokedAt ? <Button variant="outline" disabled={busy} onPress={() => void run(async () => { await request('/api/kernel', { type: 'revoke_agent_credential', id: credential.id }); if (secret?.credential.id === credential.id) setSecret(undefined); await refresh(); setNotice(`${credential.name} access revoked.`) })}>Revoke {credential.name}</Button> : null}</div>
       })}
     </CardContent></Card>
     <Card><CardHeader><CardTitle>Connect your agent client</CardTitle><CardDescription>Send the secret in the Authorization: Bearer header to /api/agent on this server. GET returns this application’s records, allowed action contracts, and a nextCursor for pagination. POST stages a selected action.</CardDescription></CardHeader><CardContent><details open><summary>MCP connection</summary><p>Use Streamable HTTP at <code>/api/mcp</code> on this workspace’s server. Set <code>Authorization: Bearer &lt;agent credential&gt;</code> in your client’s secure header configuration.</p><p>Discover tools, call <code>list_records</code> to verify read access, then choose a permitted action. Its proposal appears in the application queue for review. Clients must support bearer headers; OAuth sign-in is not available.</p></details><details><summary>Direct HTTP API</summary><pre className="agent-example">{`POST /api/agent\nAuthorization: Bearer <agent credential>\nContent-Type: application/json\n\n{\n  "type": "stage",\n  "recordId": "<record ID from GET>",\n  "action": "<allowed action name>",\n  "input": {},\n  "idempotencyKey": "<unique request key>"\n}`}</pre><p className="muted">Reuse the same key and body when retrying. GET /api/agent?change=&lt;proposal ID&gt; returns the status of a proposal made with that credential.</p></details></CardContent></Card>

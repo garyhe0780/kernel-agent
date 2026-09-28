@@ -59,7 +59,7 @@ export function PublicSite({ workspaceId }: { workspaceId: string }) {
             ) : null}
           </section>
         ))}
-        <p className="journal-footnote">Drafts are not public. <a href="/">Workspace</a></p>
+        <p className="journal-footnote">Drafts are not public. <a href="/workspace">Workspace</a></p>
       </div>
     </main>
   )

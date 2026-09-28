@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { moduleById, portRequired, viewGrammar } from './modules'
+import { moduleCatalog, portRequired, viewGrammar } from './modules'
+import type { ModuleCatalog } from './module-contract'
 import { grammarFromLegacyKind, grammarIds, isGrammarId } from './grammars'
 import { patternById } from './patterns'
 
@@ -33,6 +34,7 @@ export const assemblySchema = z.object({
   assumptions: z.array(z.string().max(500)).max(12).default([]),
   modules: z.array(z.object({
     use: z.string().min(1).max(80),
+    version: z.number().int().positive().default(1),
     as: identifier,
     name: z.string().trim().min(2).max(80).optional(),
     label: z.string().trim().min(2).max(80).optional(),
@@ -45,15 +47,15 @@ export const assemblySchema = z.object({
 
 export type Assembly = z.infer<typeof assemblySchema>
 
-export function validateAssembly(raw: unknown): Assembly {
+export function validateAssembly(raw: unknown, catalog: ModuleCatalog = moduleCatalog): Assembly {
   const assembly = assemblySchema.parse(raw)
   if (assembly.pattern && !patternById(assembly.pattern)) throw new Error(`Unknown pattern: ${assembly.pattern}`)
   const aliases = new Set<string>()
   const instances = assembly.modules.map(item => {
     if (aliases.has(item.as)) throw new Error('Module aliases must be unique.')
     aliases.add(item.as)
-    const mod = moduleById(item.use)
-    if (!mod) throw new Error(`Unknown module: ${item.use}`)
+    const mod = catalog.get(item.use, item.version)
+    if (!mod) throw new Error(`Unknown module: ${item.use}@${item.version}`)
     for (const key of Object.keys(item.settings ?? {})) {
       if (!Object.hasOwn(mod.definition.settings, key)) throw new Error(`Unknown setting ${key} on ${item.use}.`)
     }
@@ -67,7 +69,7 @@ export function validateAssembly(raw: unknown): Assembly {
     const port = source?.mod.ports.find(item => item.field === field)
     if (!source || !port) throw new Error(`Link ${link.from} does not match a module port.`)
     const target = byAlias.get(link.to)
-    if (!target || target.mod.id !== port.target) throw new Error(`Link target ${link.to} is not a ${port.target} module.`)
+    if (!target || (target.mod.id !== port.target || target.mod.version !== port.targetVersion)) throw new Error(`Link target ${link.to} is not a ${port.target}@${port.targetVersion} module.`)
     if (bound.has(link.from)) throw new Error(`Port ${field} on ${alias} is already linked.`)
     bound.add(link.from)
   }
@@ -96,27 +98,29 @@ export function validateAssembly(raw: unknown): Assembly {
   return assembly
 }
 
-export function selectionForModules(ids: string[]) {
-  const ordered: string[] = []
+export function selectionForModules(ids: string[], catalog: ModuleCatalog = moduleCatalog) {
+  const ordered: { use: string; version: number }[] = []
   const seen = new Set<string>()
-  function add(id: string) {
-    if (seen.has(id)) return
-    const mod = moduleById(id)
+  function add(id: string, version?: number) {
+    const mod = version === undefined ? catalog.latest(id) : catalog.get(id, version)
     if (!mod) throw new Error(`Unknown module: ${id}`)
-    seen.add(id)
-    ordered.push(id)
+    const key = `${id}@${mod.version}`
+    if (seen.has(key)) return
+    seen.add(key)
+    ordered.push({ use: id, version: mod.version })
     for (const port of mod.ports) {
-      if (portRequired(port)) add(port.target)
+      if (portRequired(port)) add(port.target, port.targetVersion)
     }
   }
   for (const id of ids) add(id)
   return {
     name: 'New application',
     description: 'Assembled from Kernel catalog modules.',
-    modules: ordered.map(use => {
-      const mod = moduleById(use)!
+    modules: ordered.map(({ use, version }) => {
+      const mod = catalog.get(use, version)!
       return {
         use,
+        version,
         as: mod.defaultAlias,
         settings: Object.keys(mod.definition.settings).length ? { ...mod.definition.settings } : undefined,
       }
@@ -132,13 +136,14 @@ export function assembleSelection(input: {
   name: string
   description: string
   assumptions?: string[]
-  modules: { use: string; as?: string; name?: string; label?: string; settings?: Record<string, string | number | boolean> }[]
-}): Assembly {
+  modules: { use: string; version?: number; as?: string; name?: string; label?: string; settings?: Record<string, string | number | boolean> }[]
+}, catalog: ModuleCatalog = moduleCatalog): Assembly {
   const modules = input.modules.map(item => {
-    const mod = moduleById(item.use)
-    if (!mod) throw new Error(`Unknown module: ${item.use}`)
+    const mod = item.version === undefined ? catalog.latest(item.use) : catalog.get(item.use, item.version)
+    if (!mod) throw new Error(`Unknown module: ${item.use}@${item.version}`)
     return {
       use: item.use,
+      version: mod.version,
       as: item.as ?? mod.defaultAlias,
       ...(item.name ? { name: item.name } : {}),
       ...(item.label ? { label: item.label } : {}),
@@ -146,9 +151,9 @@ export function assembleSelection(input: {
     }
   })
   const links = modules.flatMap(item => {
-    const mod = moduleById(item.use)!
+    const mod = catalog.get(item.use, item.version)!
     return mod.ports.flatMap(port => {
-      const matches = modules.filter(entry => entry.use === port.target)
+      const matches = modules.filter(entry => entry.use === port.target && entry.version === port.targetVersion)
       if (matches.length > 1) throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
       if (matches.length === 1) return [{ from: `${item.as}.${port.field}`, to: matches[0].as }]
       if (!portRequired(port)) return []
@@ -156,11 +161,11 @@ export function assembleSelection(input: {
     })
   })
   const surfaces = modules.flatMap(item => {
-    const mod = moduleById(item.use)!
+    const mod = catalog.get(item.use, item.version)!
     return [
       ...mod.views.map(view => ({ grammar: viewGrammar(mod, view), of: item.as, view: view.id, name: view.name })),
       ...(mod.layout ? [{ grammar: 'detail' as const, of: item.as }] : []),
     ]
   })
-  return validateAssembly({ name: input.name, description: input.description, assumptions: input.assumptions ?? [], modules, links, surfaces, startView: homeView(surfaces) })
+  return validateAssembly({ name: input.name, description: input.description, assumptions: input.assumptions ?? [], modules, links, surfaces, startView: homeView(surfaces) }, catalog)
 }

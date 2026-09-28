@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { ModuleCatalog } from './module-contract'
 import { recordLayoutSchema } from './application-layouts'
 import { assemblePattern, materializeAssembly, purchasingAssembly, salesAssembly, linearAssembly, paymentsAssembly, supportAssembly } from './compile'
 import type { Assembly } from './assembly'
@@ -115,8 +116,8 @@ export function validateApplication(raw: unknown): Application {
   return app
 }
 
-export function compileAssembly(raw: unknown): Application {
-  return validateApplication(materializeAssembly(raw))
+export function compileAssembly(raw: unknown, catalog?: ModuleCatalog): Application {
+  return validateApplication(materializeAssembly(raw, catalog))
 }
 
 export function purchasingExample(): Application {

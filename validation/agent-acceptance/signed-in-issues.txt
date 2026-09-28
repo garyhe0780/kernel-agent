@@ -1,0 +1,102 @@
+Browser tab: 2, Title: "Kernel — Business workspace", URL: "http://localhost:3023/p/app-cmujz7za2001piazlju5zhkp5".
+1 AXWebArea Kernel — Business workspace, URL: localhost:3023/p/app-cmujz7za2001piazlju5zhkp5
+	2 container
+		3 container Notifications alt+T
+		4 link Description: Skip to main content, Value: localhost:3023/p/app-cmujz7za2001piazlju5zhkp5#main-content
+		5 button (collapsed) Description: Switch application, current application: Team issues, ID: react-aria1506998249-_r_1_, Secondary Actions: Expand
+			6 text Team issues
+		7 button (collapsed) Description: Switch workspace, current workspace: Browser's workspace, ID: react-aria1506998249-_r_5_, Secondary Actions: Expand
+		8 text Team issues
+		9 container application-navigation
+			10 link Description: Back to workspace, Value: localhost:3023/
+			11 container Team issues navigation
+				12 button Issues 1, ID: react-aria1506998249-_r_a_
+					13 text Issues
+					14 text 1
+				15 button Issue board 1, ID: react-aria1506998249-_r_c_
+					16 text Issue board
+					17 text 1
+				18 button Backlog 0, ID: react-aria1506998249-_r_e_
+					19 text Backlog
+					20 text 0
+				21 button Started 0, ID: react-aria1506998249-_r_g_
+					22 text Started
+					23 text 0
+				24 button Projects 1, ID: react-aria1506998249-_r_i_
+					25 text Projects
+					26 text 1
+				27 button Planned 1, ID: react-aria1506998249-_r_k_
+					28 text Planned
+					29 text 1
+				30 button People 0, ID: react-aria1506998249-_r_m_
+					31 text People
+					32 text 0
+				33 button Active people 0, ID: react-aria1506998249-_r_o_
+					34 text Active people
+					35 text 0
+				36 button Review issues 0, ID: react-aria1506998249-_r_q_
+					37 text Review issues
+					38 text 0
+			39 button Invite user, ID: react-aria1506998249-_r_s_
+			40 link Description: Configure application, Value: localhost:3023/p/app-cmujz7za2001piazlju5zhkp5/build
+			41 text B
+			42 text Browser acceptance owner
+			43 text Owner
+			44 button Description: Sign out, ID: react-aria1506998249-_r_u_
+			45 link Description: Built with kernel., Value: localhost:3023/
+		46 container main-content
+			47 container
+				48 heading Issue board, Value: 1
+					49 text Issue board
+				50 text Issues ·  Track issues across projects, with an optional assignee on each issue.
+				51 checkbox Assistant, Value: 1, ID: react-aria1506998249-_r_10_
+				52 button New issue, ID: react-aria1506998249-_r_12_
+					53 text New 
+					54 text issue
+			55 container Issues board
+				56 container Backlog
+					57 container
+						58 heading Backlog, Value: 3
+							59 text Backlog
+						60 text 0
+					61 container
+						62 text No  issues .
+				63 container Started
+					64 container
+						65 heading Started, Value: 3
+							66 text Started
+						67 text 0
+					123 container
+						124 text No  issues .
+				71 container Done
+					72 container
+						73 heading Done, Value: 3
+							74 text Done
+						75 text 1
+					125 checkbox Browser project acceptance Project · Synthetic Acme, Value: 1
+						126 text Browser project acceptance
+						127 text Project · Synthetic Acme
+				78 container Canceled
+					79 container
+						80 heading Canceled, Value: 3
+							81 text Canceled
+						82 text 0
+					83 container
+						84 text No  issues .
+			85 container Description: Record details, ID: record-detail
+				128 container
+					129 heading Application assistant, Value: 2
+						130 text Application assistant
+					131 button Description: Close assistant, ID: react-aria1506998249-_r_18_
+					132 text Choose agent access, then describe a task. The assistant can find records and plan creation or actions. Review is the default.
+					133 text Agent access
+					134 pop up button (collapsed) Choose a credential Agent access, ID: react-aria1506998249-_r_1c_, Secondary Actions: Expand
+						135 text Choose a credential
+					136 text Task
+					137 text field (settable) Task, ID: react-aria1506998249-_r_1k_
+					138 button (disabled) Plan task, ID: react-aria1506998249-_r_1p_
+					139 heading Recent runs, Value: 3
+						140 text Recent runs
+					141 text completed 3  /  3  steps ·  1zsa028z
+
+The focused UI element is 51 checkbox Assistant, Value: 1, ID: react-aria1506998249-_r_10_

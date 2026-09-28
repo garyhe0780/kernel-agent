@@ -3,9 +3,10 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { definitionSchema, type Principal } from './definition'
 import { KernelError } from './errors'
+import { CREATE_ACTION } from './record-operations'
 
 type Tx = Prisma.TransactionClient
-export const agentActionSchema = z.object({ capability: z.string().min(1), action: z.string().min(1), version: z.number().int().positive() }).strict()
+export const agentActionSchema = z.object({ capability: z.string().min(1), action: z.string().min(1), version: z.number().int().positive(), execution: z.enum(['review', 'automatic']).optional() }).strict()
 export const agentGrantSchema = z.object({ project: z.string().min(1), name: z.string().trim().min(1).max(80), expiresInDays: z.number().int().min(1).max(90), actions: z.array(agentActionSchema).min(1).max(100) }).strict()
 export const agentCredentialCommandSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -41,7 +42,7 @@ export async function authorizeAgentAction(tx: Tx, id: string, capability: strin
   const scope = access.actions.find(a => a.capability === capability && a.action === action)
   if (!packages.includes(capability) || !scope) throw new KernelError('AGENT_SCOPE', 'This action is outside the credential scope.', 403)
   if (scope.version !== version) throw new KernelError('STALE_AGENT_SCOPE', 'The application definition changed. Ask the owner to review and issue a new credential.', 409)
-  return access
+  return { ...access, scope }
 }
 
 export class AgentAccess {
@@ -56,6 +57,15 @@ export class AgentAccess {
     const row = await tx.project.findUnique({ where: { workspaceId_slug: { workspaceId: p.workspaceId, slug: project } } })
     if (!row) throw new KernelError('NOT_FOUND', 'Application not found.', 404)
     return row
+  }
+  /** Owner session selects a grant by ID; no bearer secret is disclosed or needed. */
+  async forEmbedded(p: Principal, project: string, credentialId: string) {
+    return this.db.$transaction(async tx => {
+      await this.owner(tx, p, project)
+      const grant = await tx.agentCredential.findFirst({ where: { id: credentialId, workspaceId: p.workspaceId, projectSlug: project, kind: 'operate' } })
+      if (!grant) throw new KernelError('NOT_FOUND', 'Application credential not found.', 404)
+      return (await resolveAgent(tx, grant.id)).p
+    })
   }
   async listWorkspace(p: Principal) {
     return this.db.$transaction(async tx => {
@@ -104,10 +114,16 @@ export class AgentAccess {
     return this.db.$transaction(async tx => {
       const project = await this.owner(tx, p, command.project)
       const packages = z.array(z.string()).parse(project.packages)
+      if (new Set(command.actions.map(scope => `${scope.capability}:${scope.action}`)).size !== command.actions.length) throw new KernelError('INVALID_INPUT', 'Choose each operation once; duplicate execution policies are ambiguous.')
       for (const scope of command.actions) {
+        if (scope.execution === 'automatic' && !project.definition) throw new KernelError('AGENT_SCOPE', 'Automatic execution requires an application published through the builder.', 403)
         if (!packages.includes(scope.capability)) throw new KernelError('AGENT_SCOPE', 'Choose an action in this application.', 403)
         const cap = await tx.capability.findUnique({ where: { workspaceId_slug: { workspaceId: p.workspaceId, slug: scope.capability } } })
         if (!cap || cap.version !== scope.version) throw new KernelError('STALE_AGENT_SCOPE', 'Refresh the application before granting access.', 409)
+        if (scope.action === CREATE_ACTION) {
+          if (!project.definition) throw new KernelError('AGENT_SCOPE', 'Creation proposals require an application published through the builder.', 403)
+          continue
+        }
         const action = definitionSchema.parse(cap.definition).actions.find(a => a.name === scope.action)
         if (!action?.roles.includes('operator')) throw new KernelError('AGENT_SCOPE', 'Agents can only propose actions available to operators.', 403)
       }

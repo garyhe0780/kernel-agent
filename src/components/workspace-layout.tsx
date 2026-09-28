@@ -42,7 +42,7 @@ export function WorkspaceLayout() {
   if (!session.data) return <Navigate to="/login" search={{ mode: 'login' }} />
   if (!snapshot) {
     return error
-      ? <main className="auth-page"><a href="/?workspace=default">Return to default workspace</a><Alert variant="danger">{error}</Alert><Button onPress={() => setRevision(value => value + 1)}>Try again</Button></main>
+      ? <main className="auth-page"><a href="/workspace?workspace=default">Return to default workspace</a><Alert variant="danger">{error}</Alert><Button onPress={() => setRevision(value => value + 1)}>Try again</Button></main>
       : <LoadingShell />
   }
 

@@ -135,14 +135,14 @@ test('required action input and monetary bounds are enforced', () => {
   assert.throws(() => validateFields(procurement.entity.fields, { ...record, amountCents: -1 }), /range/)
 })
 
-test('the command catalog keeps construction on Core and operate-agents on stage', () => {
+test('the command catalog keeps construction on Core and operate-agents on proposals', () => {
   assert.equal(kernelCommands.stage.layer, 'core')
   assert.equal(kernelCommands.publish_settings.layer, 'core')
   assert.equal(kernelCommands.save_draft.layer, 'core')
   assert.equal(kernelCommands.publish_draft.layer, 'core')
   assert.equal(kernelCommands.install_purchasing_demo.layer, 'fixture')
   assert.equal(kernelCommands.operate.layer, 'host')
-  assert.deepEqual(Object.keys(kernelCommands).filter(name => commandAllows(name, 'operate-agent')), ['stage'])
+  assert.deepEqual(Object.keys(kernelCommands).filter(name => commandAllows(name, 'operate-agent')), ['start_run', 'manage_run', 'execute', 'stage_create', 'stage'])
   assert.deepEqual(Object.keys(kernelCommands).filter(name => commandAllows(name, 'construct-agent')), ['save_draft', 'edit_project', 'preview_migration', 'publish_draft'])
   assert.equal(commandAllows('stage', 'operate-agent'), true)
   assert.equal(commandAllows('publish_draft', 'operate-agent'), false)
@@ -771,7 +771,7 @@ test('MCP official client discovers scoped tools, stages idempotently and reads 
     await client.connect(transport)
     assert.equal(client.getServerVersion()?.name, 'kernel')
     const tools = await client.listTools()
-    assert.equal(tools.tools.length, 3)
+    assert.equal(tools.tools.length, 6)
     const tool = tools.tools.find(t => t.name.startsWith('stage_'))!
     assert.ok(tool.description?.includes('review'))
     const records = await client.callTool({ name: 'list_records', arguments: {} })
@@ -833,7 +833,7 @@ test('MCP action calls preserve tenant and entity boundaries and reject stale sc
   assert.equal(blocked.result.isError, true)
   assert.equal(blocked.result.structuredContent.status, 'blocked')
   await kernel.publishSettings(f.human, { capability: 'procurement', expectedVersion: 1, settings: { approvalLimitCents: 1000000, requireVerifiedSupplier: true } })
-  assert.equal((await call('tools/list')).result.tools.length, 2)
+  assert.equal((await call('tools/list')).result.tools.length, 5)
   assert.equal((await call('tools/call', { name, arguments: command })).result.isError, true)
 })
 
@@ -860,7 +860,7 @@ test('builder credentials create and publish applications over MCP and cannot op
   try {
     await client.connect(transport)
     const tools = await client.listTools()
-    assert.deepEqual(tools.tools.map(tool => tool.name), ['list_blocks', 'list_grammars', 'list_modules', 'list_patterns', 'list_applications', 'list_drafts', 'get_draft', 'save_draft', 'edit_project', 'preview_migration', 'publish_draft'])
+    assert.deepEqual(tools.tools.map(tool => tool.name), ['get_application_contract', 'list_blocks', 'list_grammars', 'list_modules', 'list_patterns', 'list_applications', 'list_drafts', 'get_draft', 'save_draft', 'edit_project', 'preview_migration', 'publish_draft'])
     const forbidden = await client.callTool({ name: 'list_records', arguments: {} })
     assert.equal(forbidden.isError, true)
     const modules = await client.callTool({ name: 'list_modules', arguments: {} })
@@ -892,8 +892,8 @@ test('builder credentials create and publish applications over MCP and cannot op
     assert.ok(patternList.some(item => item.id === 'payments'))
     assert.ok(patternList.some(item => item.id === 'support'))
     const { purchasingAssembly } = await import('../src/kernel/application')
-    const invented = await client.callTool({ name: 'save_draft', arguments: { brief: 'Invented application', definition: purchasingExample() } })
-    assert.equal(invented.isError, true)
+    const ambiguous = await client.callTool({ name: 'save_draft', arguments: { brief: 'Ambiguous application', pattern: 'purchasing', definition: purchasingExample() } })
+    assert.equal(ambiguous.isError, true)
     const unknownPattern = await client.callTool({ name: 'save_draft', arguments: { brief: 'Stay management for a hotel desk', pattern: 'hospitality' } })
     assert.equal(unknownPattern.isError, true)
     const paymentsSaved = await client.callTool({ name: 'save_draft', arguments: { brief: 'Inbound and outbound movements for the operations team', pattern: 'payments' } })
@@ -1236,4 +1236,150 @@ test('application invitations grant one application and skip a private workspace
   await kernel.updateMember(a.human, id, 'application', 'remove')
   await assert.rejects(kernel.workspaceMembership(person, a.human.workspaceId), /access/)
   assert.equal(await db.projectMember.count({ where: { userId: id } }), 0)
+})
+
+test('MCP custom definitions support discovery, reviewed operation and additive evolution', async () => {
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+  const { handleMcp } = await import('../src/lib/mcp.server')
+  const { validateApplication } = await import('../src/kernel/application')
+  type Draft = import('../src/kernel/application').Draft
+  const { human } = await fixture()
+  const issued = await access.create(human, { kind: 'construct', name: 'Custom builder', expiresInDays: 30 })
+  const clients: InstanceType<typeof Client>[] = []
+  const connect = async (token: string) => {
+    const client = new Client({ name: 'custom-definition-test', version: '1.0.0' })
+    clients.push(client)
+    await client.connect(new StreamableHTTPClientTransport(new URL('http://localhost:3000/api/mcp'), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      fetch: async (url, init) => handleMcp(new Request(url, init), access, kernel),
+    }))
+    return client
+  }
+  try {
+    const builder = await connect(issued.token)
+    const call = async <T>(name: string, args: Record<string, unknown> = {}) => {
+      const reply = await builder.callTool({ name, arguments: args })
+      assert.equal(reply.isError, false, JSON.stringify(reply.structuredContent))
+      return reply.structuredContent as T
+    }
+    const { contract } = await call<{ contract: ReturnType<typeof import('../src/kernel/application-contract').applicationContract> }>('get_application_contract')
+    assert.equal(contract.version, 3)
+    assert.equal(contract.schema.type, 'object')
+    assert.equal(contract.limits.entities, 8)
+    assert.ok(contract.semantics.relationships.includes('record IDs'))
+    const schema = contract.schema as unknown as { properties: { entities: { items: { properties: { entity: { properties: { fields: { additionalProperties: { properties: { type: { enum: string[] } }; required: string[] } } } } } } } } }
+    assert.deepEqual(schema.properties.entities.items.properties.entity.properties.fields.additionalProperties.properties.type.enum, ['string', 'integer', 'boolean', 'enum'])
+    assert.ok(!schema.properties.entities.items.properties.entity.properties.fields.additionalProperties.required.includes('required'), 'schema accepts omitted defaulted field properties')
+    const definition = validateApplication({
+      name: 'Equipment inspections', description: 'Track inspected equipment and review inspection results.', assumptions: [],
+      entities: [
+        {
+          slug: 'equipment', name: 'Equipment', description: 'Equipment available for inspection.',
+          entity: { name: 'equipment', label: 'Equipment', fields: {
+            title: { label: 'Name', type: 'string', min: 2 },
+            status: { label: 'Status', type: 'enum', options: ['active', 'retired'], default: 'active', editable: false },
+          } }, settings: {}, reviewerRoles: ['owner'],
+          actions: [{ name: 'retire', label: 'Retire', description: 'Retire equipment.', roles: ['operator', 'owner'], input: {}, preconditions: [], policies: [], effects: { status: 'retired' } }],
+        },
+        {
+          slug: 'inspections', name: 'Inspections', description: 'Inspection results awaiting review.',
+          entity: { name: 'inspection', label: 'Inspection', fields: {
+            title: { label: 'Inspection', type: 'string', min: 2 },
+            equipment: { label: 'Equipment', type: 'string', reference: 'equipment' },
+            status: { label: 'Status', type: 'enum', options: ['pending', 'passed'], default: 'pending', editable: false },
+            note: { label: 'Result note', type: 'string', default: '', required: false },
+          } }, settings: {}, reviewerRoles: ['owner'],
+          actions: [{ name: 'pass', label: 'Pass inspection', description: 'Record a reviewed successful inspection.', roles: ['operator', 'owner'], input: { note: { label: 'Result note', type: 'string', min: 3 } }, preconditions: [{ id: 'pending', label: 'Pending inspection', field: 'status', operator: 'eq', value: 'pending' }], policies: [], effects: { status: 'passed', note: '$input.note' } }],
+        },
+      ],
+    })
+    const brief = 'Manage equipment inspections with reviewed results'
+    const beforeDrafts = await db.projectDraft.count({ where: { workspaceId: human.workspaceId } })
+    const invalidCases = [
+      { ...definition, entities: [{ ...definition.entities[0], entity: { ...definition.entities[0].entity, fields: { ...definition.entities[0].entity.fields, date: { label: 'Date', type: 'date' } } } }] },
+      (() => { const app = structuredClone(definition); app.entities[1].entity.fields.equipment.reference = 'missing'; return app })(),
+      (() => { const app = structuredClone(definition); app.entities[1].actions[0].effects.note = '$input.missing'; return app })(),
+    ]
+    for (const invalid of invalidCases) {
+      const reply = await builder.callTool({ name: 'save_draft', arguments: { brief, definition: invalid } })
+      assert.equal(reply.isError, true)
+      const error = reply.structuredContent as { code: string; error: string; issues?: unknown[] }
+      assert.equal(error.code, 'INVALID_INPUT')
+      assert.ok(error.issues?.length || /relationship|input mapping/i.test(error.error), JSON.stringify(error))
+    }
+    for (const sources of [{}, { pattern: 'crm', definition }, { assembly: purchasingAssembly(), definition }, { pattern: 'crm', assembly: purchasingAssembly() }]) {
+      const reply = await builder.callTool({ name: 'save_draft', arguments: { brief, ...sources } })
+      assert.equal(reply.isError, true)
+      assert.match(JSON.stringify(reply.structuredContent), /exactly one/)
+    }
+    assert.equal(await db.projectDraft.count({ where: { workspaceId: human.workspaceId } }), beforeDrafts)
+    const { draft } = await call<{ draft: Draft }>('save_draft', { brief, definition })
+    assert.equal(draft.assembly, null)
+    assert.deepEqual(draft.definition, definition)
+    const invalidUpdate = await builder.callTool({ name: 'save_draft', arguments: { brief, id: draft.id, expectedVersion: draft.version, definition: invalidCases[1] } })
+    assert.equal(invalidUpdate.isError, true)
+    assert.deepEqual((await call<{ draft: Draft }>('get_draft', { id: draft.id })).draft, draft)
+    const { publication } = await call<{ publication: { slug: string; version: number } }>('publish_draft', { id: draft.id, expectedVersion: draft.version })
+    const retry = await call<{ publication: { slug: string } }>('publish_draft', { id: draft.id, expectedVersion: draft.version })
+    assert.equal(retry.publication.slug, publication.slug)
+    assert.equal((await kernel.snapshot(human, publication.slug)).records.length, 0)
+    const equipment = await kernel.createRecord(human, { title: 'Inspection rig' }, `${publication.slug}__equipment`)
+    const capability = `${publication.slug}__inspections`
+    const inspection = await kernel.createRecord(human, { title: 'Initial inspection', equipment: equipment.id }, capability)
+    const credential = await access.create(human, { project: publication.slug, name: 'Inspector', expiresInDays: 30, actions: [{ capability, action: 'pass', version: 1 }] })
+    const operator = await connect(credential.token)
+    const tools = (await operator.listTools()).tools
+    assert.ok(!tools.some(tool => ['get_application_contract', 'save_draft', 'publish_draft'].includes(tool.name)))
+    for (const name of ['get_application_contract', 'save_draft', 'publish_draft']) {
+      assert.equal((await operator.callTool({ name, arguments: {} })).isError, true)
+    }
+    for (const name of ['list_records', 'review', 'create', 'stage']) {
+      assert.equal((await builder.callTool({ name, arguments: {} })).isError, true)
+    }
+    const action = tools.find(tool => tool.name.startsWith('stage_'))!
+    assert.ok(action)
+    const args = { recordId: inspection.id, input: { note: 'Passed all checks' }, idempotencyKey: `inspection-${inspection.id}` }
+    const staged = await operator.callTool({ name: action.name, arguments: args })
+    assert.equal(staged.isError, false)
+    const change = (staged.structuredContent as { change: { id: string } }).change
+    assert.equal(((await db.businessRecord.findUniqueOrThrow({ where: { id: inspection.id } })).data as RecordData).status, 'pending')
+    await kernel.review(human, change.id, 'apply')
+    assert.equal((await kernel.review(human, change.id, 'apply')).repeated, true)
+    assert.equal(await db.execution.count({ where: { changeId: change.id, outcome: 'applied' } }), 1)
+    const { draft: edit } = await call<{ draft: Draft }>('edit_project', { project: publication.slug })
+    edit.definition.entities[1].entity.fields.inspectionMethod = { label: 'Method', type: 'string', required: true, editable: true, default: 'visual' }
+    const { draft: revised } = await call<{ draft: Draft }>('save_draft', { brief, id: edit.id, expectedVersion: edit.version, definition: edit.definition })
+    const stale = await builder.callTool({ name: 'save_draft', arguments: { brief, id: edit.id, expectedVersion: edit.version, definition: edit.definition } })
+    assert.equal((stale.structuredContent as { code: string }).code, 'STALE_DRAFT')
+    const { preview } = await call<{ preview: { token: string } }>('preview_migration', { id: revised.id, expectedVersion: revised.version })
+    await call('publish_draft', { id: revised.id, expectedVersion: revised.version, previewToken: preview.token })
+    const data = (await db.businessRecord.findUniqueOrThrow({ where: { id: inspection.id } })).data as RecordData
+    assert.deepEqual(data, { title: 'Initial inspection', equipment: equipment.id, status: 'passed', note: 'Passed all checks', inspectionMethod: 'visual' })
+    assert.equal((await kernel.projectHistory(human, publication.slug)).length, 2)
+    assert.ok(!(await operator.listTools()).tools.some(tool => tool.name.startsWith('stage_')), 'changed definition invalidates old action scope')
+    await access.revoke(human, issued.credential.id)
+    await assert.rejects(builder.callTool({ name: 'get_application_contract', arguments: {} }))
+  } finally { await Promise.all(clients.map(client => client.close())) }
+})
+
+test('a repository module publishes pinned versions and runs through the shared review engine', async () => {
+  const { assembleSelection, selectionForModules } = await import('../src/kernel/assembly')
+  const { human } = await fixture()
+  const assembly = assembleSelection(selectionForModules(['work.milestone', 'directory.party']))
+  const draft = await kernel.saveDraft(human, { brief: 'Track project milestones and their owners', assembly, source: 'manual' })
+  assert.ok(draft.assembly?.modules.every(mod => mod.version === 1))
+  const { slug } = await kernel.publishDraft(human, draft.id, draft.version)
+  const project = await kernel.createRecord(human, { title: 'Launch project' }, `${slug}__projects`)
+  const owner = await kernel.createRecord(human, { title: 'Milestone owner' }, `${slug}__parties`)
+  const record = await kernel.createRecord(human, { title: 'First release', project: project.id, owner: owner.id }, `${slug}__milestones`)
+  const issued = await access.create(human, { project: slug, name: 'Milestone agent', expiresInDays: 30, actions: [{ capability: `${slug}__milestones`, action: 'complete', version: 1 }] })
+  const agent = await access.authenticate(issued.token)
+  const staged = await kernel.stage(agent, { recordId: record.id, action: 'complete', input: { note: 'Release verified' }, idempotencyKey: 'milestone-module-complete' })
+  await kernel.review(human, staged.change!.id, 'apply')
+  const state = await kernel.snapshot(human, slug)
+  assert.equal((state.records.find(item => item.id === record.id)!.data as RecordData).status, 'completed')
+  const reopened = await kernel.editProject(human, slug)
+  assert.deepEqual(reopened.assembly?.modules, draft.assembly?.modules)
+  assert.equal(await db.execution.count({ where: { changeId: staged.change!.id, outcome: 'applied' } }), 1)
 })

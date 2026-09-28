@@ -1,7 +1,8 @@
 import { applySettings } from './definition'
 import { validateAssembly, type Assembly } from './assembly'
 import { composeSurface } from './blocks'
-import { moduleById, portRequired } from './modules'
+import { moduleCatalog, portRequired } from './modules'
+import type { ModuleCatalog } from './module-contract'
 import { patternById, type KernelPattern } from './patterns'
 import { isWorkingGrammar } from './grammars'
 
@@ -44,9 +45,9 @@ export function supportAssembly(): Assembly {
   return assemblePattern('support')
 }
 
-export function materializeAssembly(raw: unknown) {
-  const assembly = validateAssembly(raw)
-  const instances = assembly.modules.map(item => ({ item, mod: moduleById(item.use)! }))
+export function materializeAssembly(raw: unknown, catalog: ModuleCatalog = moduleCatalog) {
+  const assembly = validateAssembly(raw, catalog)
+  const instances = assembly.modules.map(item => ({ item, mod: catalog.get(item.use, item.version)! }))
   const entities = instances.map(({ item, mod }) => {
     const definition = structuredClone(mod.definition)
     definition.slug = item.as

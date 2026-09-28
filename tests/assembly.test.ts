@@ -295,3 +295,75 @@ test('movement and ticket catalog snapshots name ledger and board surfaces', () 
   assert.deepEqual(ticket.surfaces.map(surface => `${surface.grammar}:${surface.name}`), ['board:Ticket board', 'detail:Ticket details'])
   assert.deepEqual(ticket.surfaces[0].blocks, ['filters', 'board'])
 })
+
+test('a reviewed milestone extension composes with existing project and directory modules', () => {
+  const selection = selectionForModules(['work.milestone', 'directory.party'])
+  const assembly = assembleSelection(selection)
+  assert.ok(assembly.modules.every(item => item.version === 1))
+  const app = compileAssembly(assembly)
+  const milestone = app.entities.find(entity => entity.slug === 'milestones')!
+  assert.equal(milestone.entity.fields.project.reference, 'projects')
+  assert.equal(milestone.entity.fields.owner.reference, 'parties')
+  const result = evaluate(milestone, 'complete', { title: 'Launch', project: 'project-id', owner: 'party-id', status: 'planned', completionNote: '' }, { note: 'Launch verified' }, 'operator')
+  assert.equal(result.allowed, true)
+  assert.equal(result.after.status, 'completed')
+  assert.equal(result.after.completionNote, 'Launch verified')
+  const requiredOnly = compileAssembly(assembleSelection(selectionForModules(['work.milestone'])))
+  assert.equal(requiredOnly.entities[0].entity.fields.owner, undefined)
+})
+
+test('module releases pin new assemblies and keep legacy assemblies on release 1', async () => {
+  const { createModuleCatalog } = await import('../src/kernel/module-contract')
+  const { moduleCatalog } = await import('../src/kernel/modules')
+  const first = moduleCatalog.get('directory.party', 1)!
+  const second = structuredClone(first)
+  second.version = 2
+  second.definition.entity.fields.region = { label: 'Region', type: 'string', default: 'Unspecified', required: true, editable: true }
+  const catalog = createModuleCatalog([first, second])
+  const legacy = { name: 'Directory application', description: 'Test legacy directory releases.', modules: [{ use: first.id, as: 'parties' }] }
+  assert.equal(validateAssembly(legacy, catalog).modules[0].version, 1)
+  assert.equal(compileAssembly(legacy, catalog).entities[0].entity.fields.region, undefined)
+  const current = assembleSelection(selectionForModules([first.id], catalog), catalog)
+  assert.equal(current.modules[0].version, 2)
+  assert.equal(compileAssembly(current, catalog).entities[0].entity.fields.region.default, 'Unspecified')
+  const previous = assembleSelection({ ...current, modules: [{ use: first.id, version: 1 }] }, catalog)
+  assert.equal(compileAssembly(previous, catalog).entities[0].entity.fields.region, undefined)
+  const third = structuredClone(second)
+  third.version = 3
+  third.definition.entity.fields.region.default = 'Changed'
+  const expanded = createModuleCatalog([first, second, third])
+  assert.deepEqual(compileAssembly(current, expanded), compileAssembly(current, catalog), 'an added release cannot reinterpret a pinned assembly')
+  assert.throws(() => validateAssembly({ ...legacy, modules: [{ use: first.id, as: 'parties', version: 99 }] }, catalog), /Unknown module/)
+  first.definition.entity.fields.title.label = 'Mutated source'
+  catalog.get(first.id)!.definition.entity.fields.title.label = 'Mutated lookup'
+  assert.equal(catalog.get(first.id)!.definition.entity.fields.title.label, 'Name', 'catalog releases are isolated from caller mutations')
+})
+
+test('module registration and assembly reject invalid contracts and incompatible dependencies', async () => {
+  const { createModuleCatalog } = await import('../src/kernel/module-contract')
+  const { moduleCatalog } = await import('../src/kernel/modules')
+  const sources = moduleCatalog.list()
+  const milestone = moduleCatalog.get('work.milestone')!
+  assert.throws(() => createModuleCatalog([...sources, milestone]), /Duplicate module release/)
+  assert.throws(() => createModuleCatalog([{ ...milestone, contractVersion: 99 }]), /Invalid input/)
+  assert.throws(() => createModuleCatalog([{ ...milestone, execute: () => {} }]), /Unrecognized key/)
+  assert.throws(() => createModuleCatalog([{ ...milestone, ports: [...milestone.ports, milestone.ports[0]] }]), /duplicate port/)
+  assert.throws(() => createModuleCatalog([{ ...milestone, ports: [{ ...milestone.ports[0], field: 'title' }] }]), /duplicate port/)
+  assert.throws(() => createModuleCatalog([milestone]), /Missing dependency/)
+  const invalidView = structuredClone(milestone)
+  invalidView.views[0].columns.push('missing')
+  assert.throws(() => createModuleCatalog([invalidView]), /Unknown view field/)
+  const invalidField = { ...milestone, definition: { ...milestone.definition, entity: { ...milestone.definition.entity, fields: { ...milestone.definition.entity.fields, date: { label: 'Date', type: 'date' } } } } }
+  assert.throws(() => createModuleCatalog([invalidField]), /Invalid option/)
+  const project2 = moduleCatalog.get('work.project')!
+  project2.version = 2
+  const catalog = createModuleCatalog([...sources, project2])
+  const assembly = assembleSelection(selectionForModules(['work.milestone'], catalog), catalog)
+  assert.equal(assembly.modules.find(item => item.use === 'work.project')!.version, 1, 'required dependencies select the declared release')
+  assembly.modules.find(item => item.use === 'work.project')!.version = 2
+  assert.throws(() => compileAssembly(assembly, catalog), /not a work.project@1/)
+  const invalidEffects = moduleCatalog.get('work.milestone')!
+  invalidEffects.definition.actions[0].effects.completionNote = '$input.missing'
+  const invalidCatalog = createModuleCatalog([...sources.filter(mod => mod.id !== invalidEffects.id), invalidEffects])
+  assert.throws(() => compileAssembly(assembleSelection(selectionForModules(['work.milestone'], invalidCatalog), invalidCatalog), invalidCatalog), /Invalid input mapping/)
+})

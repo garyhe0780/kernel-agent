@@ -88,7 +88,7 @@ export function AuthScreen({ mode, invitationCode = '', applicationInvite = '' }
                   : await authClient.signIn.email(credentials)
                 if (result.error) throw new Error(result.error.message || 'Unable to sign in.')
                 if (applicationInvite) return
-                await navigate({ to: pendingInvitation() ? '/settings' : '/' })
+                await navigate({ to: pendingInvitation() ? '/settings' : '/workspace' })
               } catch (caught) {
                 setError(caught instanceof Error ? caught.message : 'Unable to sign in.')
               } finally {

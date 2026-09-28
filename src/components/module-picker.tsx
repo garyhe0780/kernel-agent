@@ -6,7 +6,7 @@ import { Textarea } from './ui/form-field'
 export type ModuleSelection = {
   name: string
   description: string
-  modules: { use: string; as: string; name?: string; label?: string; settings?: Record<string, string | number | boolean> }[]
+  modules: { use: string; version?: number; as: string; name?: string; label?: string; settings?: Record<string, string | number | boolean> }[]
 }
 
 export function ModulePicker({ catalog, value, onChange, disabled }: {
@@ -20,12 +20,12 @@ export function ModulePicker({ catalog, value, onChange, disabled }: {
   }
   function toggle(mod: CatalogSnapshot, checked: boolean) {
     if (checked) {
-      const added = [{ use: mod.id, as: selected(mod.id)?.as ?? mod.defaultAlias, settings: Object.keys(mod.settings).length ? { ...mod.settings } : undefined }]
+      const added = [{ use: mod.id, version: mod.version, as: selected(mod.id)?.as ?? mod.defaultAlias, settings: Object.keys(mod.settings).length ? { ...mod.settings } : undefined }]
       for (const port of mod.ports) {
         if (port.required === false) continue
         if (value.modules.some(item => item.use === port.target) || added.some(item => item.use === port.target)) continue
-        const target = catalog.find(item => item.id === port.target)
-        if (target) added.push({ use: target.id, as: target.defaultAlias, settings: Object.keys(target.settings).length ? { ...target.settings } : undefined })
+        const target = catalog.find(item => item.id === port.target && item.version === port.targetVersion)
+        if (target) added.push({ use: target.id, version: target.version, as: target.defaultAlias, settings: Object.keys(target.settings).length ? { ...target.settings } : undefined })
       }
       onChange({ ...value, modules: [...value.modules.filter(item => !added.some(entry => entry.use === item.use)), ...added] })
       return
@@ -36,6 +36,11 @@ export function ModulePicker({ catalog, value, onChange, disabled }: {
   function update(id: string, patch: Partial<ModuleSelection['modules'][number]>) {
     onChange({ ...value, modules: value.modules.map(item => item.use === id ? { ...item, ...patch } : item) })
   }
+  const visibleCatalog = catalog.filter(mod => {
+    const item = selected(mod.id)
+    const version = item ? item.version ?? 1 : Math.max(...catalog.filter(entry => entry.id === mod.id).map(entry => entry.version))
+    return mod.version === version
+  })
   return (
     <div className="module-picker">
       <FieldGroup>
@@ -51,7 +56,7 @@ export function ModulePicker({ catalog, value, onChange, disabled }: {
       <fieldset className="module-catalog" disabled={disabled}>
         <legend>Catalog modules</legend>
         <p className="muted">Select modules. Required links and views are wired automatically. This is not a page canvas.</p>
-        {catalog.map(mod => {
+        {visibleCatalog.map(mod => {
           const item = selected(mod.id)
           return (
             <div className="module-option" key={mod.id}>
