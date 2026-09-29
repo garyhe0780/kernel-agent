@@ -10,6 +10,15 @@ export type CommandSpec = {
 
 /** Closed write surface. Construction and operation share these Kernel methods; agent grants are kind-scoped. */
 export const kernelCommands = {
+  create_access_group: { layer: 'core', family: 'identity', actors: ['human'] },
+  update_access_group: { layer: 'core', family: 'identity', actors: ['human'] },
+  delete_access_group: { layer: 'core', family: 'identity', actors: ['human'] },
+  set_access_group_members: { layer: 'core', family: 'identity', actors: ['human'] },
+  create_access_policy: { layer: 'core', family: 'identity', actors: ['human'] },
+  delete_access_policy: { layer: 'core', family: 'identity', actors: ['human'] },
+  remove_application_member: { layer: 'core', family: 'identity', actors: ['human'] },
+  revoke_application_invitation: { layer: 'core', family: 'identity', actors: ['human'] },
+
   invite_member: { layer: 'core', family: 'identity', actors: ['human'] },
   revoke_invitation: { layer: 'core', family: 'identity', actors: ['human'] },
   preview_invitation: { layer: 'core', family: 'identity', actors: ['human'] },

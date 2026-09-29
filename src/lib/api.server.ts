@@ -1,3 +1,4 @@
+import { AccessManagement, accessCommands } from '../kernel/access-management.server'
 import { isWriteConflict, serverErrorDetails, writeConflictMessage } from './server-error'
 import { EmbeddedAgent } from '../kernel/embedded-agent.server'
 import { embeddedOperationSchema } from '../kernel/embedded-agent'
@@ -22,6 +23,7 @@ import { InputError } from '../kernel/errors'
 import type { Principal } from '../kernel/definition'
 
 const commandSchema = z.discriminatedUnion('type', [
+  ...accessCommands,
   agentRunSchema.extend({ type: z.literal('start_run') }),
   agentRunCommandSchema.extend({ type: z.literal('manage_run') }),
   createProposalSchema.extend({ type: z.literal('stage_create') }),
@@ -96,6 +98,7 @@ export async function handleKernel(request: Request, agent = false) {
     if (request.method === 'GET') {
     const p = await principal(request, agent ? 'agent' : 'human')
       const query = new URL(request.url).searchParams
+      if (!agent && query.has('members')) return response(await new AccessManagement(db).list(p, query.get('members') || undefined))
       if (!agent && query.has('buildJob')) {
         const id = query.get('buildJob')!
         const job = await buildJobs.get(p, id)
@@ -137,6 +140,7 @@ export async function handleKernel(request: Request, agent = false) {
     }
     const p = await principal(request, agent ? 'agent' : 'human')
     if (agent && !commandAllows(command.type, 'operate-agent')) throw new KernelError('FORBIDDEN', 'The agent endpoint can only stage proposals.', 403)
+    if (accessCommands.some(schema => schema.shape.type.value === command.type)) return response(await new AccessManagement(db).mutate(p, command))
     switch (command.type) {
       case 'retry_build': return queuedBuild(await buildJobs.retry(p, command.id))
       case 'invite_member': return response(await kernel.inviteMember(p, command.email, command.role))

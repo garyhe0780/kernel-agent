@@ -10,6 +10,9 @@ const cloudflareEnabled = process.env.CLOUDFLARE === '1'
 const root = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 export default defineConfig({
+  // The standalone browser fixtures run alongside the app. Each server needs
+  // its own optimized dependency cache so one cannot replace the other's chunks.
+  cacheDir: root('./node_modules/.vite-app'),
   define: {
     __KERNEL_CLOUDFLARE__: JSON.stringify(cloudflareEnabled),
   },

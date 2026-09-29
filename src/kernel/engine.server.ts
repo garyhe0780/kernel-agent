@@ -1,3 +1,4 @@
+import { accessInclude, effectiveMember, effectiveRole, hasOwnerAccess, memberProjectIds } from './member-access.server'
 import { calendarDate, matchesView } from './application-views'
 import { agentLimits, lockCredential, admitRun, admitOperation } from './agent-limits.server'
 import { inspectRun } from './run-inspection.server'
@@ -49,20 +50,20 @@ export class Kernel {
       if (principal.kind !== 'agent' || principal.userId !== access.p.userId || principal.workspaceId !== access.p.workspaceId || principal.role !== access.p.role) throw new KernelError('FORBIDDEN', 'Invalid agent identity.', 403)
       return
     }
-    const membership = await tx.membership.findFirst({ where: { userId: principal.userId, workspaceId: principal.workspaceId } })
+    const membership = await effectiveMember(tx, principal.workspaceId, principal.userId)
     if (!membership || membership.role !== principal.role) throw new KernelError('FORBIDDEN', 'You do not have access to this workspace.', 403)
   }
 
   private async grantedProjectIds(tx: Tx, p: Principal) {
     if (p.role !== 'application') return null
-    const rows = await tx.projectMember.findMany({ where: { userId: p.userId, project: { workspaceId: p.workspaceId } }, select: { projectId: true } })
-    return new Set(rows.map(row => row.projectId))
+    return memberProjectIds(tx, p.workspaceId, p.userId)
   }
 
   private async assertApplicationCapability(tx: Tx, p: Principal, capability: string) {
     if (p.role !== 'application') return
-    const rows = await tx.projectMember.findMany({ where: { userId: p.userId, project: { workspaceId: p.workspaceId } }, include: { project: true } })
-    const packages = new Set(rows.flatMap(row => asStringList(row.project.packages)))
+    const ids = await memberProjectIds(tx, p.workspaceId, p.userId)
+    const projects = await tx.project.findMany({ where: { workspaceId: p.workspaceId, id: { in: [...ids] } } })
+    const packages = new Set(projects.flatMap(project => asStringList(project.packages)))
     if (!packages.has(capability)) throw new KernelError('FORBIDDEN', 'This record is outside your application.', 403)
   }
 
@@ -238,7 +239,7 @@ export class Kernel {
   async workspaceMembership(user: { id: string; name: string; email?: string }, workspaceId?: string) {
     if (!workspaceId) {
       const found = await this.db.membership.findFirst({ where: { userId: user.id }, orderBy: { id: 'asc' } })
-      if (found) return found
+      if (found) return (await effectiveMember(this.db, found.workspaceId, user.id))!
       const email = user.email?.trim().toLowerCase()
       if (email && await this.db.projectInvitation.findFirst({ where: { email, expiresAt: { gt: new Date() } } })) {
         throw new KernelError('INVITE_PENDING', 'Open your application invitation to finish joining.', 409)
@@ -247,14 +248,15 @@ export class Kernel {
     }
     const member = await this.db.membership.findFirst({ where: { userId: user.id, workspaceId } })
     if (!member) throw new KernelError('FORBIDDEN', 'You do not have access to this workspace.', 403)
-    return member
+    return (await effectiveMember(this.db, member.workspaceId, user.id))!
   }
 
   async listWorkspaces(p: Principal) {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       if (p.kind !== 'human') throw new KernelError('FORBIDDEN', 'Only signed-in people can manage workspaces.', 403)
-      return tx.membership.findMany({ where: { userId: p.userId }, select: { role: true, workspace: { select: { id: true, name: true } } }, orderBy: { id: 'asc' } })
+      const members = await tx.membership.findMany({ where: { userId: p.userId }, include: { ...accessInclude, workspace: { select: { id: true, name: true } } }, orderBy: { id: 'asc' } })
+      return members.map(member => ({ workspace: member.workspace, role: effectiveRole(member) }))
     })
   }
 
@@ -348,7 +350,7 @@ export class Kernel {
     const invite = await this.db.workspaceInvitation.findUnique({ where: { tokenHash: createHash('sha256').update(token).digest('hex') } })
     const user = await this.db.user.findUnique({ where: { id: p.userId } })
     if (!invite || invite.expiresAt <= new Date() || !user || user.email.toLowerCase() !== invite.email) throw new KernelError('INVALID_INVITE', 'This invitation is expired, revoked, or belongs to a different email address.', 403)
-    if (!await this.db.membership.findFirst({where:{workspaceId:invite.workspaceId,userId:invite.createdBy,role:'owner'}})) throw new KernelError('INVALID_INVITE', 'The inviter no longer has owner access. Ask an owner for a new invitation.', 403)
+    if (!await hasOwnerAccess(this.db, invite.workspaceId, invite.createdBy)) throw new KernelError('INVALID_INVITE', 'The inviter no longer has owner access. Ask an owner for a new invitation.', 403)
     const workspace = await this.db.workspace.findUnique({ where: { id: invite.workspaceId } })
     if (!workspace) throw new KernelError('NOT_FOUND', 'Workspace no longer exists.', 404)
     return { workspaceName: workspace.name, role: invite.role, email: invite.email }
@@ -360,7 +362,7 @@ export class Kernel {
       const invite = await tx.workspaceInvitation.findUnique({ where: { tokenHash: createHash('sha256').update(token).digest('hex') } })
       const user = await tx.user.findUnique({ where: { id: p.userId } })
       if (!invite || invite.expiresAt <= new Date() || !user || user.email.toLowerCase() !== invite.email) throw new KernelError('INVALID_INVITE', 'This invitation is expired, revoked, or belongs to a different email address.', 403)
-      if (!await tx.membership.findFirst({where:{workspaceId:invite.workspaceId,userId:invite.createdBy,role:'owner'}})) throw new KernelError('INVALID_INVITE', 'The inviter no longer has owner access. Ask an owner for a new invitation.', 403)
+      if (!await hasOwnerAccess(tx, invite.workspaceId, invite.createdBy)) throw new KernelError('INVALID_INVITE', 'The inviter no longer has owner access. Ask an owner for a new invitation.', 403)
       const workspace = await tx.workspace.findUnique({ where: { id: invite.workspaceId } })
       if (!workspace) throw new KernelError('NOT_FOUND', 'Workspace no longer exists.', 404)
       const existing = await tx.membership.findFirst({ where: { workspaceId: invite.workspaceId, userId: p.userId } })
@@ -404,7 +406,7 @@ export class Kernel {
     return this.db.$transaction(async tx => {
       const invite = await tx.projectInvitation.findUnique({ where: { tokenHash: tokenHash(token) }, include: { project: true } })
       if (!invite || invite.expiresAt <= new Date() || invite.email !== address) throw new KernelError('INVALID_INVITE', 'This invitation is expired, revoked, or belongs to a different email address.', 403)
-      if (!await tx.membership.findFirst({ where: { workspaceId: invite.project.workspaceId, userId: invite.createdBy, role: 'owner' } })) throw new KernelError('INVALID_INVITE', 'The inviter no longer has owner access. Ask an owner for a new invitation.', 403)
+      if (!await hasOwnerAccess(tx, invite.project.workspaceId, invite.createdBy)) throw new KernelError('INVALID_INVITE', 'The inviter no longer has owner access. Ask an owner for a new invitation.', 403)
       const existing = await tx.membership.findFirst({ where: { workspaceId: invite.project.workspaceId, userId: user.id } })
       if (!existing) await tx.membership.create({ data: { workspaceId: invite.project.workspaceId, userId: user.id, role: 'application' } })
       if (!existing || existing.role === 'application') {
@@ -553,11 +555,10 @@ export class Kernel {
   }
 
   private async assignmentMembers(tx: Tx, p: Principal, projectSlug?: string) {
-    const members = await tx.membership.findMany({ where: { workspaceId: p.workspaceId, OR: [
-      { role: { in: ['owner', 'operator'] } },
-      ...(projectSlug ? [{ role: 'application', user: { projectMembers: { some: { project: { workspaceId: p.workspaceId, slug: projectSlug } } } } }] : []),
-    ] }, select: { user: { select: { id: true, name: true } } }, orderBy: { userId: 'asc' } })
-    return members.map(member => member.user)
+    const members = await tx.membership.findMany({ where: { workspaceId: p.workspaceId }, include: { ...accessInclude, user: { select: { id: true, name: true } } }, orderBy: { userId: 'asc' } })
+    const project = projectSlug ? await tx.project.findUnique({ where: { workspaceId_slug: { workspaceId: p.workspaceId, slug: projectSlug } } }) : null
+    const visible = await Promise.all(members.map(async member => ['owner', 'operator'].includes(effectiveRole(member)) || (effectiveRole(member) === 'application' && project && (await memberProjectIds(tx, p.workspaceId, member.userId)).has(project.id)) ? member.user : null))
+    return visible.filter((user): user is { id: string; name: string } => user !== null)
   }
 
   private async validateReferences(tx: Tx, p: Principal, fields: Record<string, import('./definition').Field>, data: RecordData, capability?: string, recordId?: string) {
@@ -591,8 +592,8 @@ export class Kernel {
     }
     for (const [key, field] of Object.entries(fields)) {
       if (field.format === 'user' && data[key]) {
-        const member = await tx.membership.findFirst({ where: { workspaceId: p.workspaceId, userId: String(data[key]), role: { in: ['owner', 'operator', 'application'] } } })
-        if (!member) throw new KernelError('INVALID_REFERENCE', `Choose an active workspace member for ${field.label}.`)
+        const member = await effectiveMember(tx, p.workspaceId, String(data[key]))
+        if (!member || !['owner', 'operator', 'application'].includes(member.role)) throw new KernelError('INVALID_REFERENCE', `Choose an active workspace member for ${field.label}.`)
         if (capability) await this.assertApplicationCapability(tx, { ...p, userId: member.userId, role: member.role }, capability)
       }
       if (!field.reference) continue
@@ -1292,9 +1293,10 @@ export class Kernel {
       } else if (decision === 'apply') {
         const record = await tx.businessRecord.findFirst({ where: { id: change.recordId, workspaceId: p.workspaceId } })
         if (!record || record.version !== change.recordVersion || cap.version !== change.definitionVersion) throw new KernelError('STALE_PROPOSAL', 'The record or capability has changed. Reject this proposal and stage a fresh one.', 409)
-        const proposer = await tx.membership.findFirst({ where: { userId: change.proposedBy, workspaceId: p.workspaceId } })
+        const proposer = await effectiveMember(tx, p.workspaceId, change.proposedBy)
         if (!proposer) throw new KernelError('FORBIDDEN', 'The proposer no longer belongs to this workspace.', 403)
         const agentAccess = change.agentCredentialId ? await authorizeAgentAction(tx, change.agentCredentialId, cap.slug, change.action, cap.version) : undefined
+        if (!agentAccess) await this.assertApplicationCapability(tx, { ...p, userId: proposer.userId, role: proposer.role }, cap.slug)
         const result = evaluate(cap.definition, change.action, record.data as RecordData, change.input, agentAccess ? agentAccess.p.role : recordRole(proposer.role))
         await this.validateReferences(tx, p, cap.definition.entity.fields, result.after, cap.slug, record.id)
         if (!result.allowed) throw new KernelError('POLICY_BLOCKED', 'The proposal no longer meets current business rules.', 409)

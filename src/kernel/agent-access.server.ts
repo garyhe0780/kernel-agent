@@ -1,3 +1,4 @@
+import { accessInclude, effectiveRole, hasOwnerAccess } from './member-access.server'
 import { createHash, randomBytes } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { z } from 'zod'
@@ -23,7 +24,7 @@ const grantKind = (grant: { kind?: string | null }) => grant.kind === 'construct
 export async function resolveAgent(tx: Tx, id: string) {
   const grant = await tx.agentCredential.findUnique({ where: { id } })
   if (!grant || grant.revokedAt || grant.expiresAt.getTime() <= Date.now()) throw new KernelError('INVALID_CREDENTIAL', 'Agent credential is expired or revoked. Ask the owner for a new credential.', 401)
-  const member = await tx.membership.findFirst({ where: { userId: grant.createdBy, workspaceId: grant.workspaceId, role: 'owner' } })
+  const member = await hasOwnerAccess(tx, grant.workspaceId, grant.createdBy)
   if (!member) throw new KernelError('INVALID_CREDENTIAL', 'The credential owner or application is no longer available.', 401)
   if (grantKind(grant) === 'construct') {
     const p: Principal = { userId: grant.createdBy, workspaceId: grant.workspaceId, name: grant.name, role: 'owner', kind: 'agent', agentCredentialId: grant.id, agentGrant: 'construct' }
@@ -48,7 +49,7 @@ export async function authorizeAgentAction(tx: Tx, id: string, capability: strin
 export class AgentAccess {
   constructor(private db: PrismaClient) {}
   private async workspaceOwner(tx: Tx, p: Principal) {
-    const member = await tx.membership.findFirst({ where: { userId: p.userId, workspaceId: p.workspaceId, role: 'owner' } })
+    const member = await hasOwnerAccess(tx, p.workspaceId, p.userId)
     if (p.kind !== 'human' || p.agentCredentialId || p.role !== 'owner' || !member) throw new KernelError('FORBIDDEN', 'Only a workspace owner can manage agent access.', 403)
     return member
   }
@@ -74,13 +75,13 @@ export class AgentAccess {
         tx.agentCredential.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { createdAt: 'desc' } }),
         tx.capability.findMany({ where: { workspaceId: p.workspaceId }, select: { slug: true, version: true } }),
         tx.project.findMany({ where: { workspaceId: p.workspaceId }, select: { slug: true, name: true } }),
-        tx.membership.findMany({ where: { workspaceId: p.workspaceId, role: 'owner' }, select: { userId: true } }),
+        tx.membership.findMany({ where: { workspaceId: p.workspaceId }, include: accessInclude }),
       ])
       return grants.map(grant => {
         const kind = grantKind(grant)
         const actions = kind === 'operate' ? z.array(agentActionSchema).parse(grant.actions) : []
         const project = projects.find(item => item.slug === grant.projectSlug)
-        const ownerOk = owners.some(owner => owner.userId === grant.createdBy)
+        const ownerOk = owners.some(owner => owner.userId === grant.createdBy && effectiveRole(owner) === 'owner')
         const stale = kind === 'operate' && (!project || actions.some(scope => caps.find(cap => cap.slug === scope.capability)?.version !== scope.version))
         const state = grant.revokedAt ? 'Revoked' : grant.expiresAt.getTime() <= Date.now() ? 'Expired' : !ownerOk || stale ? 'Needs review' : 'Active'
         return {

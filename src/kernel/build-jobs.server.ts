@@ -1,3 +1,4 @@
+import { hasOwnerAccess } from './member-access.server'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient, type BuildJob } from '@prisma/client'
 import { Kernel } from './engine.server'
@@ -14,7 +15,7 @@ export function jobSnapshot(job: BuildJob): BuildJobSnapshot {
   return { id: job.id, planId: job.planId, planVersion: job.planVersion, status: job.status as BuildJobSnapshot['status'], task: job.task, revision: job.revision, completedTasks: Object.keys(job.checkpoints as object), events: eventsOf(job), error: job.error as BuildJobSnapshot['error'], draftId: job.draftId }
 }
 async function owner(tx: Prisma.TransactionClient, p: Principal) {
-  if (p.kind !== 'human' || p.agentCredentialId || p.role !== 'owner' || !(await tx.membership.findFirst({ where: { userId: p.userId, workspaceId: p.workspaceId, role: 'owner' } }))) throw new KernelError('FORBIDDEN', 'Only workspace owners can access builds.', 403)
+  if (p.kind !== 'human' || p.agentCredentialId || p.role !== 'owner' || !(await hasOwnerAccess(tx, p.workspaceId, p.userId))) throw new KernelError('FORBIDDEN', 'Only workspace owners can access builds.', 403)
 }
 
 export class BuildJobs {

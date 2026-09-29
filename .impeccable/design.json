@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-20T15:50:00.000Z",
+  "generatedAt": "2026-09-29T13:35:33.214Z",
   "title": "Design System: Kernel",
   "extensions": {
     "colorMeta": {
@@ -64,14 +64,14 @@
         "role": "neutral",
         "displayName": "Desk Paper",
         "tonalRamp": [
-          "oklch(15% 0.0029 264.5)",
-          "oklch(27% 0.0029 264.5)",
-          "oklch(39% 0.0029 264.5)",
-          "oklch(51% 0.0029 264.5)",
-          "oklch(63% 0.0029 264.5)",
-          "oklch(75% 0.0029 264.5)",
-          "oklch(87% 0.0029 264.5)",
-          "oklch(95% 0.0029 264.5)"
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(39% 0 0)",
+          "oklch(51% 0 0)",
+          "oklch(63% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(87% 0 0)",
+          "oklch(95% 0 0)"
         ]
       },
       "surface": {
@@ -92,42 +92,42 @@
         "role": "neutral",
         "displayName": "Graphite",
         "tonalRamp": [
-          "oklch(15% 0.0144 261.7)",
-          "oklch(27% 0.0144 261.7)",
-          "oklch(39% 0.0144 261.7)",
-          "oklch(51% 0.0144 261.7)",
-          "oklch(63% 0.0144 261.7)",
-          "oklch(75% 0.0144 261.7)",
-          "oklch(87% 0.0144 261.7)",
-          "oklch(95% 0.0144 261.7)"
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(39% 0 0)",
+          "oklch(51% 0 0)",
+          "oklch(63% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(87% 0 0)",
+          "oklch(95% 0 0)"
         ]
       },
       "quiet": {
         "role": "neutral",
         "displayName": "Quiet",
         "tonalRamp": [
-          "oklch(15% 0.0233 257.5)",
-          "oklch(27% 0.0233 257.5)",
-          "oklch(39% 0.0233 257.5)",
-          "oklch(51% 0.0233 257.5)",
-          "oklch(63% 0.0233 257.5)",
-          "oklch(75% 0.0233 257.5)",
-          "oklch(87% 0.0233 257.5)",
-          "oklch(95% 0.0233 257.5)"
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(39% 0 0)",
+          "oklch(51% 0 0)",
+          "oklch(63% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(87% 0 0)",
+          "oklch(95% 0 0)"
         ]
       },
       "line": {
         "role": "neutral",
         "displayName": "Fine Line",
         "tonalRamp": [
-          "oklch(15% 0.0058 264.5)",
-          "oklch(27% 0.0058 264.5)",
-          "oklch(39% 0.0058 264.5)",
-          "oklch(51% 0.0058 264.5)",
-          "oklch(63% 0.0058 264.5)",
-          "oklch(75% 0.0058 264.5)",
-          "oklch(87% 0.0058 264.5)",
-          "oklch(95% 0.0058 264.5)"
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(39% 0 0)",
+          "oklch(51% 0 0)",
+          "oklch(63% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(87% 0 0)",
+          "oklch(95% 0 0)"
         ]
       },
       "nav-active": {
@@ -162,14 +162,14 @@
         "role": "neutral",
         "displayName": "Nav Hover",
         "tonalRamp": [
-          "oklch(15% 0.0075 260.7)",
-          "oklch(27% 0.0075 260.7)",
-          "oklch(39% 0.0075 260.7)",
-          "oklch(51% 0.0075 260.7)",
-          "oklch(63% 0.0075 260.7)",
-          "oklch(75% 0.0075 260.7)",
-          "oklch(87% 0.0075 260.7)",
-          "oklch(95% 0.0075 260.7)"
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(39% 0 0)",
+          "oklch(51% 0 0)",
+          "oklch(63% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(87% 0 0)",
+          "oklch(95% 0 0)"
         ]
       },
       "table-head": {
@@ -486,6 +486,11 @@
         "name": "selected-tab",
         "value": "0 1px 2px rgba(17, 20, 26, 0.08)",
         "purpose": "Existing selected tile tabs; not desk underline tabs."
+      },
+      {
+        "name": "member-selected-tab",
+        "value": "0 1px 2px #00000012",
+        "purpose": "Scoped white selected tile on standalone member tabs."
       }
     ],
     "motion": [
@@ -533,7 +538,7 @@
       "refersTo": "button-outline",
       "description": "Compact desk action; mobile minimum height is 44px.",
       "html": "<button class=\"ds-button-outline\">New request</button>",
-      "css": ".ds-button-outline{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;min-height:34px;padding:7px 12px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;color:#20242b;font-weight:550;letter-spacing:-.01em;cursor:pointer;transition:background 140ms ease,border-color 140ms ease,opacity 140ms ease;}.ds-button-outline:hover:not(:disabled){background:#eef1f6}.ds-button-outline:focus-visible{outline:2px solid #3659d9;outline-offset:2px;}.ds-button-outline:disabled{opacity:.5;cursor:not-allowed}"
+      "css": ".ds-button-outline{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;min-height:34px;padding:7px 12px;border:1px solid #e3e3e3;border-radius:6px;background:#fff;color:#262626;font-weight:550;letter-spacing:-.01em;cursor:pointer;transition:background 140ms ease,border-color 140ms ease,opacity 140ms ease;}.ds-button-outline:hover:not(:disabled){background:#eef1f6}.ds-button-outline:focus-visible{outline:2px solid #3659d9;outline-offset:2px;}.ds-button-outline:disabled{opacity:.5;cursor:not-allowed}"
     },
     {
       "name": "Ghost button",
@@ -541,7 +546,7 @@
       "refersTo": "button-ghost",
       "description": "Compact desk action; mobile minimum height is 44px.",
       "html": "<button class=\"ds-button-ghost\">New request</button>",
-      "css": ".ds-button-ghost{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;min-height:34px;padding:7px 12px;border:1px solid transparent;border-radius:6px;background:transparent;color:#20242b;font-weight:550;letter-spacing:-.01em;cursor:pointer;transition:background 140ms ease,border-color 140ms ease,opacity 140ms ease;}.ds-button-ghost:hover:not(:disabled){background:rgba(17,20,26,.06)}.ds-button-ghost:focus-visible{outline:2px solid #3659d9;outline-offset:2px;}.ds-button-ghost:disabled{opacity:.5;cursor:not-allowed}"
+      "css": ".ds-button-ghost{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;min-height:34px;padding:7px 12px;border:1px solid transparent;border-radius:6px;background:transparent;color:#262626;font-weight:550;letter-spacing:-.01em;cursor:pointer;transition:background 140ms ease,border-color 140ms ease,opacity 140ms ease;}.ds-button-ghost:hover:not(:disabled){background:rgba(17,20,26,.06)}.ds-button-ghost:focus-visible{outline:2px solid #3659d9;outline-offset:2px;}.ds-button-ghost:disabled{opacity:.5;cursor:not-allowed}"
     },
     {
       "name": "Destructive button",
@@ -557,15 +562,15 @@
       "refersTo": "input",
       "description": "Visible label and rounded operational field.",
       "html": "<label class=\"ds-field\">Request name<input class=\"ds-input\" placeholder=\"Office supplies\"></label>",
-      "css": ".ds-field{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;display:flex;flex-direction:column;gap:6px;color:#2b313b;font-weight:550}.ds-input{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;min-height:34px;padding:.5rem .75rem;border:1px solid #e5e7eb;border-radius:6px;background:#fff;color:#20242b}.ds-input:focus-visible{outline:2px solid color-mix(in srgb,#3659d9 45%,white);outline-offset:1px}"
+      "css": ".ds-field{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;display:flex;flex-direction:column;gap:6px;color:#2b313b;font-weight:550}.ds-input{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;min-height:34px;padding:.5rem .75rem;border:1px solid #e3e3e3;border-radius:6px;background:#fff;color:#262626}.ds-input:focus-visible{outline:2px solid color-mix(in srgb,#3659d9 45%,white);outline-offset:1px}"
     },
     {
       "name": "Application navigation",
       "kind": "nav",
       "refersTo": "nav-item-active",
-      "description": "Selected business section in the light application rail. Workspace Catalog lists generic blocks first, then business modules; wired blocks bind to a view or a record and are not a page canvas.",
+      "description": "Business sections use the shared 260px sidebar. Workspace navigation groups Build and Observe; the workspace switcher is in the header and application switching is in the sidebar. Collapse leaves a persistent expand control.",
       "html": "<nav class=\"ds-nav\" aria-label=\"Application\"><a class=\"ds-nav-item\" href=\"#requests\" aria-current=\"page\">Requests <span>12</span></a></nav>",
-      "css": ".ds-nav{background:#f7f8fa;padding:12px}.ds-nav-item{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;display:flex;gap:10px;min-height:36px;padding:8px 10px;border-radius:6px;text-decoration:none;background:#e6ebf5;color:#28469f;font-weight:600}.ds-nav-item span{margin-left:auto}.ds-nav-item:hover{background:#e9ecf1;color:#20242b}.ds-nav-item:focus-visible{outline:2px solid #3659d9;outline-offset:2px;}"
+      "css": ".ds-nav{background:#fafafa;padding:12px}.ds-nav-item{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:13px;display:flex;gap:13px;min-height:36px;padding:8px 10px;border-radius:5px;text-decoration:none;background:#e6ebf5;color:#28469f;font-weight:600}.ds-nav-item span{margin-left:auto}.ds-nav-item:hover{background:#f0f0f0;color:#262626}.ds-nav-item:focus-visible{outline:2px solid #3659d9;outline-offset:2px;}"
     },
     {
       "name": "Pending badge",
@@ -581,7 +586,7 @@
       "refersTo": "card",
       "description": "Ordinary supporting content; record and inspector containers use their own flush variants.",
       "html": "<section class=\"ds-card\"><h2>Request details</h2><p>Inspect the record before taking action.</p></section>",
-      "css": ".ds-card{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;padding:1.1rem 1.15rem;border:1px solid #e5e7eb;border-radius:6px;background:#fff;color:#20242b}.ds-card h2{font-size:15px;font-weight:600;letter-spacing:-.015em;margin:0}.ds-card p{font-size:12px;color:#626b78;margin:8px 0 0}"
+      "css": ".ds-card{font-family:'Inter Variable','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;font-size:12px;padding:1.1rem 1.15rem;border:1px solid #e3e3e3;border-radius:6px;background:#fff;color:#262626}.ds-card h2{font-size:15px;font-weight:600;letter-spacing:-.015em;margin:0}.ds-card p{font-size:12px;color:#707070;margin:8px 0 0}"
     },
     {
       "name": "Dialog",
@@ -594,9 +599,9 @@
   ],
   "narrative": {
     "northStar": "The Operations Desk",
-    "overview": "Kernel business applications use a shared light desk: application-specific navigation, a white working field, continuous records, and adjacent details or review. Graphite text, restrained blue selection, compact Inter typography, and fine separators support sustained operational work. Kernel remains secondary application-switching infrastructure.\n\nThis is the user-approved replacement system for business application surfaces, evidenced by the shared desk shell and generated, procurement, and audit workbenches. Kernel workspace home and its inline application builder share the same desk shell as business applications. Auth and public surfaces retain the prior ink/paper, IBM Plex Sans and Newsreader system; legacy-prefixed tokens document that scoped exception. Shared dialogs now use Inter and rounded corners globally, including when opened from those older surfaces.",
+    "overview": "Kernel business applications use a shared light desk: application-specific navigation, a flat near-white working canvas, continuous records, and adjacent details or review. Graphite text, restrained blue selection, compact Inter typography, and fine separators support sustained operational work. Kernel remains secondary application-switching infrastructure.\n\nThe shared shell follows the user-approved Cloudflare account-console reference (2026-09-29), retaining Kernel branding and existing capabilities. The generated, procurement, and audit workbenches keep their domain-specific records and review patterns. Kernel workspace home and its inline application builder share the same desk shell as business applications. Auth and public surfaces retain the prior ink/paper, IBM Plex Sans and Newsreader system; legacy-prefixed tokens document that scoped exception. Shared dialogs now use Inter and rounded corners globally, including when opened from those older surfaces.",
     "keyCharacteristics": [
-      "Light application navigation and white working surfaces",
+      "Continuous near-white account shell with white working tables",
       "Self-hosted Inter for compact operational hierarchy",
       "Continuous records beside details, review, or assistant",
       "Blue actions and selection; semantic amber, green, and red",

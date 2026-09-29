@@ -2,6 +2,8 @@
 
 Run `pnpm test:browser-recovery` and open http://127.0.0.1:3010 in a temporary browser tab. This renders the actual ProjectBuilder with an injected transport; no API keys, live model, authentication, application database or publication endpoint are used. Saved fixture drafts use sessionStorage; reload retains only the saved draft. Request counters reset on reload.
 
+The fixture server and the main app use separate Vite dependency caches (`node_modules/.vite-browser-recovery` and `node_modules/.vite-app`). Keep these separate when running both servers; sharing a cache can replace optimized chunks and break the app's dynamic route imports. To check isolation, open a fixture while the app is running on port 3000, then reload an application route and confirm its modules still load.
+
 1. Edit the description and choose Revise with agent. The first clarification call fails. Verify the description remains, Retry request is enabled, and Save draft / Publish application are disabled. No save_draft request should appear in the visible request trace.
 2. Retry request. Verify the trace reads clarify → clarify and a question appears. Answer it yourself; Build with these answers must be disabled until answered.
 3. Build. The first generation call fails. Verify the answer is retained in the description, the saved revision is unchanged, Save/Publish remain disabled, and Retry build is available.
@@ -55,3 +57,7 @@ Related creation: choose New task in Related records. The deal must already be d
 Relationship choices: Edit deal starts with Example account and Jordan at Example. Change Account to Second account: Jordan remains visible with needs attention, and Save must not close the form. Primary contact offers Taylor at Second plus an explicit clear option; Jordan is disabled. Choose Taylor and save; account/contact details must both update. New deal for account fixes Example account and offers only Jordan. The fixture deliberately omits rule metadata on action inputs to exercise entity-effect mapping.
 
 CSV export: Export CSV downloads the synthetic deal with all fields. Verify one data row, its record ID, raw amount 250000 in the cents column, and both IDs/names for account, contact and assigned member. The downloaded file is synthetic test data. Pure export tests cover filtering boundaries, order, Unicode/quotes/newlines, unavailable relationships and formula-like text.
+
+## Application shell polish
+
+Open `/application-shell.html` for the actual WorkbenchApp with an empty Tasks view, or add `?populated` for one synthetic task and its details. Its synthetic session and fetch adapter never reach the live database; mutations return a preview-only error. Verify application switching, saved-view disclosure, entity/view navigation, breadcrumb ancestors, empty-state recovery, and mobile navigation. Tables scroll locally on narrow screens.

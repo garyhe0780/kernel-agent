@@ -6,14 +6,14 @@ colors:
   cobalt-ink: "#1d3bb8"
   cobalt-soft: "#e4eaff"
   cobalt-wash: "#edf2ff"
-  paper: "#f7f8fa"
+  paper: "#fafafa"
   surface: "#ffffff"
-  body: "#20242b"
-  quiet: "#626b78"
-  line: "#e5e7eb"
+  body: "#262626"
+  quiet: "#707070"
+  line: "#e3e3e3"
   nav-active: "#e6ebf5"
   nav-active-ink: "#28469f"
-  nav-hover: "#e9ecf1"
+  nav-hover: "#f0f0f0"
   table-head: "#fafbfc"
   inspector: "#fdfdfe"
   amber: "#c4841d"
@@ -91,6 +91,7 @@ typography:
 rounded:
   none: "0"
   small: "4px"
+  navigation: "5px"
   control: "6px"
   app-icon: "8px"
   dialog-modal: "10px"
@@ -148,10 +149,24 @@ components:
     rounded: "{rounded.small}"
     padding: "3px 7px"
     typography: "{typography.badge}"
+  desk-header:
+    height: "52px"
+    backgroundColor: "{colors.paper}"
+  desk-sidebar:
+    width: "260px"
+    backgroundColor: "{colors.paper}"
+  desk-canvas:
+    backgroundColor: "{colors.paper}"
+    rounded: "{rounded.none}"
+    padding: "0"
+  desk-footer:
+    height: "48px"
+    textColor: "{colors.quiet}"
+    padding: "12px 32px"
   nav-item-active:
     backgroundColor: "{colors.nav-active}"
     textColor: "{colors.nav-active-ink}"
-    rounded: "{rounded.control}"
+    rounded: "{rounded.navigation}"
     padding: "8px 10px"
     height: "36px"
 ---
@@ -162,12 +177,12 @@ components:
 
 **Creative North Star: "The Operations Desk"**
 
-Kernel business applications use a shared light desk: application-specific navigation, a white working field, continuous records, and adjacent details or review. Graphite text, restrained blue selection, compact Inter typography, and fine separators support sustained operational work. Kernel remains secondary application-switching infrastructure.
+Kernel business applications use a shared light desk: application-specific navigation, a flat near-white working canvas, continuous records, and adjacent details or review. Graphite text, restrained blue selection, compact Inter typography, and fine separators support sustained operational work. Kernel remains secondary application-switching infrastructure.
 
-This is the user-approved replacement system for business application surfaces, evidenced by the shared desk shell and generated, procurement, and audit workbenches. Kernel workspace home and its inline application builder share the same desk shell as business applications. Auth and public surfaces retain the prior ink/paper, IBM Plex Sans and Newsreader system; legacy-prefixed tokens document that scoped exception. Shared dialogs now use Inter and rounded corners globally, including when opened from those older surfaces.
+The shared shell follows the user-approved Cloudflare account-console reference (2026-09-29), retaining Kernel branding and existing capabilities. The generated, procurement, and audit workbenches keep their domain-specific records and review patterns. Kernel workspace home and its inline application builder share the same desk shell as business applications. Auth and public surfaces retain the prior ink/paper, IBM Plex Sans and Newsreader system; legacy-prefixed tokens document that scoped exception. Shared dialogs now use Inter and rounded corners globally, including when opened from those older surfaces.
 
 **Key Characteristics:**
-- Light application navigation and white working surfaces
+- Continuous near-white account shell with white working tables
 - Self-hosted Inter for compact operational hierarchy
 - Continuous records beside details, review, or assistant
 - Blue actions and selection; semantic amber, green, and red
@@ -175,7 +190,7 @@ This is the user-approved replacement system for business application surfaces, 
 
 ## Colors
 
-Cool neutrals define the desk; restrained cobalt marks actions and selection. Tokens above are normative within the scope stated here.
+Neutral grays define the shared shell; restrained cobalt marks actions and selection. Tokens above are normative within the scope stated here.
 
 ### Primary
 - **Desk Cobalt:** Primary actions and lifecycle-tab selection. Cobalt Ink supplies inherited primary hover; soft and wash variants identify badges and selected rows.
@@ -185,7 +200,7 @@ Cool neutrals define the desk; restrained cobalt marks actions and selection. To
 - **Review Amber:** Pending, warning, and explicitly simulated work. Use the soft background with amber ink for legible status.
 
 ### Neutral
-- **Desk Paper / Surface White:** Light sidebar and white work area.
+- **Desk Paper / Surface White:** Continuous near-white shell and canvas, with white tables, fields, and supporting surfaces.
 - **Graphite / Quiet:** Primary text and secondary descriptions, references, and table labels.
 - **Fine Line:** Continuous table, toolbar, and inspector separators.
 - **Table Head / Inspector:** Near-white tonal differentiation without elevation.
@@ -206,9 +221,11 @@ Legacy auth display and outside-desk page headings retain Newsreader; outside-de
 
 ## Layout
 
-The desktop shell is a page-scrolling frame on Desk Paper, with a 72px shared sticky top bar and a 240px sidebar. The application switcher sits at the left of the top bar; workspace surfaces use the Kernel brand there. Beside it, a workspace switcher and a quiet location label identify the current workspace and page or application. Long names truncate within the available header width. Below, the sidebar blends into the outer canvas and stays beneath the top bar. Its directory scrolls independently while the account controls remain outside that scrolling region at the bottom. The white main surface has a fine border, 16px top corners and square bottom corners, document-level scrolling, and a 12px right gutter with no bottom gap. The generated records desk places a flexible queue beside a 360px inspector without an inter-column gap; the working region starts at a 480px minimum height. Header insets are 25px 28px 21px; views and toolbars use 24px horizontal insets. Search is 260px wide. Inspector content uses the panel inset; key/value labels occupy 105px. Legacy procurement and audit workflows share this shell while retaining their domain toolbars and registers.
+The desktop shell is a page-scrolling, edge-to-edge account console with a 52px sticky header, a 260px sidebar, and a 48px footer row beneath the main canvas. Fine borders divide the header, sidebar, footer, and working region. The main canvas has no enclosing card border, rounded frame, or outer gutters. Workspace pages place the Kernel mark and workspace switcher in the upper-left header cell; application pages show only their application mark and switcher there; the current breadcrumb, Help link, and account popover occupy the right cell. Account identity and sign-out live in that upper-right popover. Application pages have no workspace menu or duplicate application switcher row in the sidebar. Owners can return to the workspace through the application menu. Long names truncate within the available header width.
 
-At 1200px the sidebar becomes 216px and inspector 310px; header padding becomes 20px. At 1000px the inspector stacks under records with a top divider. At 760px the shell becomes one column with a sticky top bar whose workspace switcher and location occupy a second row; mobile navigation starts 108px from the top. The frame has 8px horizontal gutters with no bottom gap, and 16px main-surface top corners. A navigation disclosure opens a separately scrolling region capped at 55dvh; the directory and account controls scroll together within it. Selecting a section closes it. Main content uses 16px horizontal insets, full-width search, and 44px minimum button, tab, navigation, and record-selection targets. Lifecycle tabs scroll horizontally when needed. Detail navigation remains keyboard-operable.
+The sidebar stays beneath the header and its directory scrolls independently. A persistent bottom control collapses the desktop sidebar to 64px and remains available to expand it. Workspace navigation groups destinations under Build and Observe. The footer carries Documentation and Kernel attribution. The generated records desk retains a flexible queue beside a 360px inspector without an inter-column gap and a 480px minimum working-region height. Its header uses 18px 24px 12px padding, a 72px minimum height, and a 20px, weight-600 title. Header, filter summary, views, toolbar, and working surface share 24px horizontal insets. Search retains its 260px width with a fine border and white field; key/value labels remain 105px wide. The records/inspector surface has a fine outer border and 8px corners; empty views use a bounded 200px surface with centered content. These workbench dimensions do not apply to the member directory.
+
+At 1200px the inspector becomes 310px; application desk insets remain 24px and the shell sidebar remains 260px. At 1000px the inspector stacks under records with a top divider. At 760px the shell becomes one column with no outer gutters or frame rounding. The sticky header is 96px in two rows: a 52px workspace row and a 44px breadcrumb/utilities row. Navigation opens beneath it in a scrolling disclosure capped to the remaining viewport height; selecting a section closes it. Desktop collapse controls are hidden on mobile. Main content uses local 16px horizontal insets, full-width search, and 44px minimum button, tab, navigation, and record-selection targets. Lifecycle tabs and tables scroll locally when needed; the page itself does not widen. Application tables retain a 640px minimum width inside a positioned scroll wrapper, with at least 180px for the record-title column. Application workbench insets reduce to 16px and titles stay at 20px on mobile. Detail navigation remains keyboard-operable. The footer wraps with 16px padding on mobile.
 
 Outside-desk legacy layouts retain the 248px ink rail and 980px stacking behavior, square controls, and existing card spacing. They are preserved exceptions, not templates for new business desks.
 
@@ -216,13 +233,13 @@ Outside-desk legacy layouts retain the 248px ink rail and 980px stacking behavio
 
 The desk uses flat surfaces and fine tonal distinctions. Records are borderless containers; the inspector edge is a single divider. Cards do not acquire resting shadows.
 
-Select overlays retain `0 16px 40px rgba(17, 20, 26, 0.12)`; dialogs retain `0 24px 60px rgba(17, 20, 26, 0.22)` over a 46% ink scrim. The existing selected tab tile uses `0 1px 2px rgba(17, 20, 26, 0.08)` where that tab component remains; desk lifecycle tabs instead use underlines.
+Select overlays retain `0 16px 40px rgba(17, 20, 26, 0.12)`; dialogs retain `0 24px 60px rgba(17, 20, 26, 0.22)` over a 46% ink scrim. The existing selected tab tile uses `0 1px 2px rgba(17, 20, 26, 0.08)` where that tab component remains; desk lifecycle tabs instead use underlines. Standalone member tabs use a scoped selected-tile shadow of `0 1px 2px #00000012`.
 
 **The Flat Desk Rule.** Separate records and details with fine borders and tonal fields. Reserve structural shadows for overlays.
 
 ## Shapes
 
-Controls and ordinary cards use the control radius; chips use small corners. Application icons use app-icon corners and account avatars remain circular. Continuous record and inspector containers and underline tabs stay square. Dialog modal wrappers use dialog-modal corners, with control-radius inner content. Legacy non-dialog controls outside the desk retain the zero-radius root token.
+Controls and ordinary cards use the control radius; chips use small corners. Navigation rows use navigation corners. Application icons use app-icon corners and account avatars remain circular. The shared outer canvas stays square and borderless; member tables retain their scoped 9px corners. Record and inspector interiors and underline tabs stay square; the enclosing application workbench uses scoped 8px corners. Dialog modal wrappers use dialog-modal corners, with control-radius inner content. Legacy non-dialog controls outside the desk retain the zero-radius root token.
 
 ## Components
 
@@ -233,18 +250,23 @@ Compact, legible actions: primary blue, outline white with a fine border, ghost 
 Sentence-case status labels, compact padding, small radius, no tracking. Warning, success, danger, and primary variants retain their paired soft fills and darker text. Text always communicates the status alongside color.
 
 ### Cards / Containers
-Ordinary supporting cards retain fine borders and the control radius. The central records container removes its card border and padding; inspector cards become transparent, borderless sections with the panel inset. Do not propagate those section-specific zero borders to every supporting card.
+Ordinary supporting cards retain fine borders and the control radius. Inside the fine-bordered application workbench, the central records container removes its own card border and padding; inspector cards become transparent, borderless sections with the panel inset. Do not propagate those section-specific zero borders to every supporting card.
 
 ### Inputs / Fields
 Desk inputs use compact label-size text and a 34px minimum height, white surface, fine border, control radius, and existing field padding. Search removes its border and left padding inside an icon-led toolbar. Fields retain a two-pixel cobalt-mix focus outline; general focus-visible styles remain available. Error copy is semantic danger.
 
 ### Navigation
-Application switcher at the top, real entity sections and record counts, entity-specific review, then configuration, all applications, account, and small Kernel attribution below. Selected items use Navigation Blue and medium weight. Hover uses the neutral nav-hover field. Desktop navigation rows have a 32px minimum height, 12px labels and 16px SVG icons; selected labels use weight 600. The workspace sidebar shows Favorites with a quiet 11px heading and an add control. Favorites show at most three shortcuts in saved order; when more are saved, a More row opens a popover containing all favorites. Favorites start empty; a searchable chooser with native checkboxes selects application shortcuts, saved in this browser for the current user and workspace. The Applications destination contains the full directory. Catalog lists generic blocks first, then business modules. Wired blocks bind to a view or a record; they are not a page canvas. The header workspace switcher reuses the existing popover treatment, lists actual memberships with the current workspace marked, and includes a labeled create-workspace form. Switching applies to the current browser tab; a newly created workspace is selected explicitly from the list. The top-bar application mark is 28px with a 19px icon. Navigation rows, the Favorites add control and chooser options grow to at least 44px on coarse pointers and at widths up to 760px. A mobile disclosure controls the same navigation; icons are SVG, with explicit labels for icon-only controls.
+The upper-left header shows the workspace switcher and Kernel mark on workspace pages, or only the application switcher and mark on application pages. Workspace destinations use Build and Observe group labels, followed by Favorites and the Manage account disclosure. Business applications retain real entity sections, review, and configuration. Sidebar entity, saved-view, and review links omit count badges; totals belong in the working content. Saved views use labeled disclosure controls: the current entity opens automatically, while other groups start collapsed and can be opened independently. Entity rows retain 36px targets with no extra inter-section margin, and account navigation is separated by 16px. Saved-view rows use 12px labels and 30px desktop targets, growing to 44px on mobile and coarse pointers. The single top-bar breadcrumb shows entity → current view, with a clickable entity ancestor; the settings icon is reserved for account/configuration context. Help and the account menu remain in the upper right; sign-out belongs inside that menu. The bottom sidebar control collapses or expands navigation, while Documentation and Kernel attribution live in the main footer. Selected items use Navigation Blue and medium weight; hover uses the neutral nav-hover field. Desktop rows have a 36px minimum height, 13px labels, 5px corners, and 16px SVG icons; selected labels use weight 600. Favorites and group labels use quiet 13px text. Favorites show at most three shortcuts in saved order; when more are saved, a More row opens a popover containing all favorites. Favorites start empty; a searchable chooser with native checkboxes selects application shortcuts, saved in this browser for the current user and workspace. The Applications destination contains the full directory. Catalog lists generic blocks first, then business modules. Wired blocks bind to a view or a record; they are not a page canvas. The header workspace switcher reuses the existing popover treatment, lists actual memberships with the current workspace marked, and includes a labeled create-workspace form. Switching applies to the current browser tab; a newly created workspace is selected explicitly from the list. The Kernel mark and header application mark are 28px with a 19px icon. Navigation rows, the Favorites add control and chooser options grow to at least 44px on coarse pointers and at widths up to 760px. A mobile disclosure controls the same navigation; icons are SVG, with explicit labels for icon-only controls.
 
 ### Continuous records and inspector
 Records use sentence-case table headers, fine row dividers, blue selected/hover wash, and compact references below record names. Selection updates the neighboring record details. The inspector offers underline Details and Activity tabs; the assistant occupies this panel when requested. Pending changes display before/after evidence and review actions. Actual workflow state determines content; no decorative analytics are added.
 
+### Account members
+Workspace owners reach Members in both workspace and application navigation through the sidebar's Manage account disclosure. The shared directory has All members and Groups tabs; group detail replaces the shell breadcrumb with Members → Groups → group name, with clickable Members and Groups ancestors. Use exactly one breadcrumb in the top bar, followed immediately by Group members, Permission policies, and Settings tabs. Show the group name once as the current breadcrumb item; keep its editable description in Settings rather than repeating a title and summary above the tabs. Standalone member pages use a full-width tab divider directly below the shell header. Tabs are 36px tall on desktop and 44px on mobile; their neutral segmented field uses a white selected tile. The content panel has 36px vertical and 40px horizontal padding on desktop, reducing to 24px and 16px on mobile. Search and a row of refresh/create actions sit above a white, fine-bordered table. The standalone directory heading remains available to assistive technology while the shell breadcrumb carries its visible location; group detail keeps its heading available to assistive technology and displays its path only in the shell header. Embedded settings directories retain their own headings and existing layout. On mobile, search and actions stack, policy fields become one column, and wide tables scroll within a positioned, width-contained wrapper. It retains the desk palette, Inter, and shared controls. These are scoped member-management patterns; supported grants and evidence are documented in `docs/ACCOUNT_MEMBERS.md`.
+
 ### Dialogs
+User preference (2026-09-29): use modal dialogs for short create/add flows, such as creating a group or permission policy, instead of expanding a full-width inline form above a list. Keep the list visible behind the overlay, place Cancel and the primary action in the footer, focus the first field, and keep validation errors inside the dialog. Apply this default to future similar flows unless the user explicitly requests another presentation.
+
 Shared portal dialogs use Inter globally, the dialog-title hierarchy, rounded wrappers/content, a white surface, and the existing overlay shadow and scroll limits. Palette inheritance remains root-scoped outside the desk; do not claim a portal inherits application-scoped CSS variables.
 
 ### Workspace Overview
@@ -272,4 +294,4 @@ Catalog applies the same Operations desk identity to a Preview workbench: a sear
 The builder uses the desk typography and a stable description/preview split on wide screens, stacking at 1100px. The description field is at least 184px high with concise guidance and a character count. The preview region owns initial, loading, clarification, and failed-build states. Busy action labels describe current work; retry labels appear after failure. Draft review keeps preview controls visible and groups record layouts, navigation/views, and field/rule editing under disclosures. Existing save, review, migration, and publish rules remain authoritative.
 
 ### Workspace settings
-Settings keeps the shared desk shell and replaces workspace navigation with a dedicated settings sidebar: Back to workspace, Search settings, Workspace (General, Members & access), and Intelligence (Models & providers, Agents & permissions). The header keeps the workspace switcher and shows Settings / current section. The content column is capped at 900px, with no inner navigation column. On mobile the shared navigation disclosure opens this same settings sidebar and closes after selecting a section. Setting descriptions and controls align across flat rows with fine separators; mobile stacks each row. Changes save locally to their section, with clear pending, error and success states. Membership role/removal and credential revocation use explicit confirmation. Installation-managed model values are identified as such, with a separate opt-in connection test.
+Settings keeps the shared desk shell and replaces workspace navigation with a dedicated settings sidebar: Back to workspace, Search settings, Manage account (General, Members), and Intelligence (Models & providers, Agents & permissions). The Members section embeds the same account-member directory used by the standalone Members routes. The header keeps the workspace switcher and shows Settings / current section. The content column is capped at 900px, with no inner navigation column. On mobile the shared navigation disclosure opens this same settings sidebar and closes after selecting a section. Setting descriptions and controls align across flat rows with fine separators; mobile stacks each row. Changes save locally to their section, with clear pending, error and success states. Membership role/removal and credential revocation use explicit confirmation. Installation-managed model values are identified as such, with a separate opt-in connection test.
