@@ -72,3 +72,65 @@ test('HTTP signup requires the configured invitation code and leaves sign-in ope
     else process.env.KERNEL_SIGNUP_CODE = previous
   }
 })
+
+test('password recovery uses single-use expiring tokens and revokes sessions', async () => {
+  process.env.BETTER_AUTH_SECRET ||= '0'.repeat(64)
+  const previous = { key: process.env.RESEND_API_KEY, sender: process.env.KERNEL_EMAIL_FROM, invite: process.env.KERNEL_SIGNUP_CODE }
+  const originalFetch = globalThis.fetch
+  const sent: { to: string[]; text: string }[] = []
+  const auth = createAuth(db)
+  const email = `recovery-${Date.now()}@example.test`
+  const post = (path: string, body: Record<string, unknown>) => auth.handler(new Request(`http://localhost:3000/api/auth${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' }, body: JSON.stringify(body),
+  }))
+  try {
+    process.env.KERNEL_SIGNUP_CODE = 'recovery-test'
+    assert.equal((await post('/sign-up/email', { name: 'Recovery', email, password: 'original-password', invitationCode: 'recovery-test' })).status, 200)
+    delete process.env.RESEND_API_KEY
+    delete process.env.KERNEL_EMAIL_FROM
+    assert.equal((await post('/request-password-reset', { email })).status, 503)
+    assert.equal((await post('/request-password-reset', { email: 'unknown@example.test' })).status, 503)
+    process.env.RESEND_API_KEY = 'test-key'
+    process.env.KERNEL_EMAIL_FROM = 'Kernel <accounts@example.test>'
+    globalThis.fetch = async (input, init) => {
+      assert.equal(input, 'https://api.resend.com/emails')
+      sent.push(JSON.parse(String(init?.body)))
+      return Response.json({ id: 'test-message' })
+    }
+    const redirectTo = 'http://localhost:3000/login?mode=reset'
+    const known = await post('/request-password-reset', { email, redirectTo })
+    const unknown = await post('/request-password-reset', { email: 'unknown@example.test', redirectTo })
+    assert.equal(known.status, 200)
+    assert.deepEqual(await known.json(), await unknown.json())
+    assert.equal(sent.length, 1)
+    assert.deepEqual(sent[0].to, [email])
+    const link = sent[0].text.match(/http[^\s]+/)![0]
+    const callback = await auth.handler(new Request(link))
+    assert.equal(callback.status, 302)
+    const token = new URL(callback.headers.get('location')!).searchParams.get('token')!
+    assert.ok(token)
+    assert.equal((await post('/reset-password', { token, newPassword: 'short' })).status, 400)
+    assert.equal((await post('/reset-password', { token, newPassword: 'replacement-password' })).status, 200)
+    const user = await db.user.findUniqueOrThrow({ where: { email } })
+    assert.equal(await db.session.count({ where: { userId: user.id } }), 0)
+    assert.equal((await post('/reset-password', { token, newPassword: 'another-password' })).status, 400)
+    assert.equal((await post('/sign-in/email', { email, password: 'original-password' })).status, 401)
+    assert.equal((await post('/sign-in/email', { email, password: 'replacement-password' })).status, 200)
+    await post('/request-password-reset', { email, redirectTo })
+    const expiredLink = sent[1].text.match(/http[^\s]+/)![0]
+    const expiredToken = new URL(expiredLink).pathname.split('/').pop()!
+    await db.verification.updateMany({ where: { identifier: `reset-password:${expiredToken}` }, data: { expiresAt: new Date(0) } })
+    const expiredCallback = await auth.handler(new Request(expiredLink))
+    assert.match(expiredCallback.headers.get('location')!, /error=INVALID_TOKEN/)
+    assert.equal((await post('/reset-password', { token: expiredToken, newPassword: 'another-password' })).status, 400)
+    assert.equal((await post('/request-password-reset', { email, redirectTo: 'https://untrusted.example/reset' })).status, 403)
+    globalThis.fetch = async () => new Response('provider failure', { status: 500 })
+    assert.equal((await post('/request-password-reset', { email, redirectTo })).status, 200)
+  } finally {
+    globalThis.fetch = originalFetch
+    for (const [key, value] of Object.entries({ RESEND_API_KEY: previous.key, KERNEL_EMAIL_FROM: previous.sender, KERNEL_SIGNUP_CODE: previous.invite })) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+})

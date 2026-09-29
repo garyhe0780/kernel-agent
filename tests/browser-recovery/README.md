@@ -42,3 +42,16 @@ Open `/assistant.html`. It renders the actual ApplicationAssistant with syntheti
 Observed on 2026-09-27: all steps above passed. Evidence: `validation/agent-acceptance/browser-completed.png` and `.txt`. These checks do not establish authenticated browser integration or live-model accuracy.
 
 Run inspection fixture: open `/run-inspection.html` on the same fixture server. It uses the actual assistant with synthetic cancelled and rejected runs. Expand “Inspect steps and history” and “Input and proposed changes”; check applied versus cancelled outcomes, preserved effects guidance, cancellation actor/time, disabled retry for the rejected proposal, and the Open record callback. Inspect at desktop and 390px width. Browser verification of this fixture was blocked on 2026-09-28 by an unavailable browser automation service.
+
+
+## CRM editing
+
+Open `/crm.html` for synthetic deal, account, owner and task records rendered by the actual board/detail/edit components. Open Edit deal, verify relationships and values are retained, change Next step, leave optional dates/notes/contact blank, and save. The fixture must show the revised next step and unchanged USD amount. Toggle Narrow layout to inspect a 390px container; this is not a full mobile-device test. No live API requests or records are involved.
+
+The CRM fixture also supplies two synthetic workspace members. Reassign the deal from Alex Chen to Sam Rivera, save, and verify that board/details show Sam while My deals changes from 1 to 0. This verifies component behavior; member access enforcement is covered by database tests.
+
+Related creation: choose New task in Related records. The deal must already be displayed and fixed. Enter a title and submit: the first attempt injects a save failure; title and relation must persist. Submit again: the form closes and Tasks increases from 1 to 2 with the new title. New activity must also be available when its related list is empty. Closing and reopening must discard the previous creation form.
+
+Relationship choices: Edit deal starts with Example account and Jordan at Example. Change Account to Second account: Jordan remains visible with needs attention, and Save must not close the form. Primary contact offers Taylor at Second plus an explicit clear option; Jordan is disabled. Choose Taylor and save; account/contact details must both update. New deal for account fixes Example account and offers only Jordan. The fixture deliberately omits rule metadata on action inputs to exercise entity-effect mapping.
+
+CSV export: Export CSV downloads the synthetic deal with all fields. Verify one data row, its record ID, raw amount 250000 in the cents column, and both IDs/names for account, contact and assigned member. The downloaded file is synthetic test data. Pure export tests cover filtering boundaries, order, Unicode/quotes/newlines, unavailable relationships and formula-like text.

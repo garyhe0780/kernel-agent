@@ -1,3 +1,4 @@
+import { calendarDate, matchesView } from './application-views'
 import { agentLimits, lockCredential, admitRun, admitOperation } from './agent-limits.server'
 import { inspectRun } from './run-inspection.server'
 import { agentRunSchema, agentRunCommandSchema, type RunReceipt, runRecovery } from './agent-runs'
@@ -5,8 +6,8 @@ import { planningContentSchema, planBrief } from './builder-plan'
 import { createHash, randomUUID } from 'node:crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { z } from 'zod'
-import { CREATE_ACTION, agentExecutionSchema, createProposalSchema, creationContract, creationValues, recordQuerySchema } from './record-operations'
-import { applySettings, definitionSchema, evaluate, toolContracts, validateFields, type Principal, type RecordData } from './definition'
+import { CREATE_ACTION, agentExecutionSchema, createProposalSchema, creationContract, creationValues, recordQuerySchema, snapshotRecordLimits, type RecordPageInfo } from './record-operations'
+import { applySettings, definitionSchema, evaluate, toolContracts, validateFields, type Definition, type Principal, type RecordData } from './definition'
 import { catalog, catalogFor, composePublic, seedFor } from './packages'
 import { asStringList, projectTemplates, sortProjects, toProjectSnapshot } from './projects'
 import { compileAssembly, validateApplication } from './application'
@@ -19,13 +20,19 @@ import { assemblePattern } from './compile'
 import { canonical, namespaceApplication, planMigration, type MigrationPreview } from './migration'
 import { DEMO_PURCHASING_SLUG, purchasingDemoApplication, purchasingDemoAssembly, purchasingDemoRequests, purchasingDemoSuppliers } from './purchasing-demo'
 
-import { KernelError } from './errors'
+import { InputError, KernelError } from './errors'
 export { KernelError } from './errors'
 import { resolveAgent, authorizeAgentAction } from './agent-access.server'
 type Tx = Prisma.TransactionClient
 const zEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254
 const json = (value: unknown) => value as Prisma.InputJsonValue
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
+/** Surfaces validation messages to the caller; any other failure propagates as a server error. */
+function inputFailure(error: unknown, code: string, status?: number) {
+  if (error instanceof KernelError) return error
+  if (error instanceof InputError || error instanceof z.ZodError) return new KernelError(code, error.message, status)
+  return error
+}
 /** Application members use the same record actions as operators, without workspace administration. */
 function recordRole(role: string) {
   return role === 'application' ? 'operator' : role
@@ -73,17 +80,17 @@ export class Kernel {
         const assembly = assemblePattern(command.pattern.trim())
         return { assembly, definition: compileAssembly(assembly) }
       }
-      catch (error) { throw error instanceof KernelError ? error : new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Unknown pattern.', 422) }
+      catch (error) { throw inputFailure(error, 'INVALID_INPUT', 422) }
     }
     if (command.assembly !== undefined && command.assembly !== null) {
       try { return { assembly: validateAssembly(command.assembly), definition: compileAssembly(command.assembly) } }
-      catch (error) { throw error instanceof KernelError ? error : new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid assembly.', 422) }
+      catch (error) { throw inputFailure(error, 'INVALID_INPUT', 422) }
     }
     if (command.definition === undefined) throw new KernelError('INVALID_INPUT', 'Provide a catalog pattern, an assembly of catalog modules, or a definition.', 400)
     try { return { assembly: null, definition: validateApplication(command.definition) } }
     catch (error) {
-      if (error instanceof z.ZodError || error instanceof KernelError) throw error
-      throw new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid application definition.', 422)
+      if (error instanceof z.ZodError) throw error
+      throw inputFailure(error, 'INVALID_INPUT', 422)
     }
   }
 
@@ -279,6 +286,7 @@ export class Kernel {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only an owner can remove the purchasing demo.', 403)
+      await tx.$queryRaw`SELECT "id" FROM "Workspace" WHERE "id" = ${p.workspaceId} FOR UPDATE`
       const project = await tx.project.findUnique({ where: { workspaceId_slug: { workspaceId: p.workspaceId, slug: DEMO_PURCHASING_SLUG } } })
       if (!project) throw new KernelError('NOT_FOUND', 'The purchasing demo is not in this workspace.', 404)
       const packages = asStringList(project.packages)
@@ -316,7 +324,7 @@ export class Kernel {
       await this.authorize(tx, p)
       if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only owners can invite members.', 403)
       const members = await tx.membership.findMany({ where: { workspaceId: p.workspaceId }, include: { user: true } })
-      if (members.some(m => m.user.email.toLowerCase() === address)) throw new KernelError('ALREADY_MEMBER', 'This person already belongs to this workspace.', 409)
+      if (members.some(m => m.role !== 'application' && m.user.email.toLowerCase() === address)) throw new KernelError('ALREADY_MEMBER', 'This person already belongs to this workspace.', 409)
       await tx.workspaceInvitation.deleteMany({ where: { workspaceId: p.workspaceId, email: address } })
       const invite = await tx.workspaceInvitation.create({ data: { workspaceId: p.workspaceId, createdBy: p.userId, email: address, role, tokenHash: createHash('sha256').update(token).digest('hex'), expiresAt: new Date(Date.now() + 7 * 86400000) } })
       await this.event(tx, p, 'member.invite', 'applied', { email: address, role })
@@ -357,8 +365,14 @@ export class Kernel {
       if (!workspace) throw new KernelError('NOT_FOUND', 'Workspace no longer exists.', 404)
       const existing = await tx.membership.findFirst({ where: { workspaceId: invite.workspaceId, userId: p.userId } })
       if (!existing) await tx.membership.create({ data: { workspaceId: invite.workspaceId, userId: p.userId, role: invite.role } })
+      const upgraded = existing?.role === 'application'
+      if (upgraded) {
+        await tx.membership.update({ where: { id: existing.id }, data: { role: invite.role } })
+        await tx.projectMember.deleteMany({ where: { userId: p.userId, project: { workspaceId: invite.workspaceId } } })
+      }
       await tx.workspaceInvitation.delete({ where: { id: invite.id } })
-      await this.event(tx, { ...p, workspaceId: invite.workspaceId, role: existing?.role ?? invite.role }, 'member.join', 'applied', { userId: p.userId })
+      const role = !existing || upgraded ? invite.role : existing.role
+      await this.event(tx, { ...p, workspaceId: invite.workspaceId, role }, upgraded ? 'member.role_change' : 'member.join', 'applied', upgraded ? { userId: p.userId, before: 'application', after: invite.role } : { userId: p.userId })
       return { workspaceId: invite.workspaceId, name: workspace.name }
     })
   }
@@ -468,7 +482,8 @@ export class Kernel {
     })
   }
 
-  async snapshot(p: Principal, projectSlug?: string) {
+  /** `limits` raises how many of the newest records load per entity, in page steps up to the ceiling. */
+  async snapshot(p: Principal, projectSlug?: string, limits: Record<string, number> = {}) {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: p.workspaceId } })
@@ -477,23 +492,43 @@ export class Kernel {
       const projects = projectRows.map(toProjectSnapshot)
       const caps = await tx.capability.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { slug: 'asc' } })
       const allCapabilities = caps.map(cap => ({ ...cap, definition: definitionSchema.parse(cap.definition) }))
-      const [allRecords, allChanges, allExecutions] = await Promise.all([
-        tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { createdAt: 'desc' } }),
-        Promise.all([
-          tx.changeSet.findMany({ where: { workspaceId: p.workspaceId, status: 'pending' }, orderBy: { createdAt: 'desc' } }),
-          tx.changeSet.findMany({ where: { workspaceId: p.workspaceId, status: { not: 'pending' } }, orderBy: { createdAt: 'desc' }, take: 100 }),
-        ]).then(([pending, history]) => [...pending, ...history].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())),
-        tx.execution.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { createdAt: 'desc' }, take: 100 }),
-      ])
       const current = projectSlug ? projects.find(item => item.slug === projectSlug) : undefined
       if (projectSlug && !current) throw new KernelError('NOT_FOUND', 'Project not found.', 404)
       const slugs = current ? new Set(current.packages) : granted ? new Set(projects.flatMap(item => item.packages)) : undefined
+      const scope = { workspaceId: p.workspaceId, ...(slugs ? { capability: { in: [...slugs] } } : {}) }
       const capabilities = current
         ? current.packages.map(slug => allCapabilities.find(cap => cap.slug === slug)).filter((cap): cap is typeof allCapabilities[number] => Boolean(cap))
         : slugs ? allCapabilities.filter(cap => slugs.has(cap.slug)) : allCapabilities
-      const records = slugs ? allRecords.filter(record => slugs.has(record.capability)) : allRecords
+      const limitFor = (slug: string) => {
+        const requested = Math.ceil((Number.isFinite(limits[slug]) ? limits[slug] : 0) / snapshotRecordLimits.page) * snapshotRecordLimits.page
+        return Math.min(snapshotRecordLimits.max, Math.max(snapshotRecordLimits.page, requested))
+      }
+      const [pages, totals, scopedChanges, allExecutions] = await Promise.all([
+        Promise.all(capabilities.map(cap => tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: cap.slug }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limitFor(cap.slug) }))),
+        tx.businessRecord.groupBy({ by: ['capability'], where: scope, _count: { _all: true } }),
+        Promise.all([
+          tx.changeSet.findMany({ where: { ...scope, status: 'pending' }, orderBy: { createdAt: 'desc' } }),
+          tx.changeSet.findMany({ where: { ...scope, status: { not: 'pending' } }, orderBy: { createdAt: 'desc' }, take: 100 }),
+        ]).then(([pending, history]) => [...pending, ...history].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())),
+        tx.execution.findMany({ where: { workspaceId: p.workspaceId }, orderBy: { createdAt: 'desc' }, take: 100 }),
+      ])
+      const paged = pages.flat()
+      const loadedIds = new Set(paged.map(record => record.id))
+      // Records outside the loaded pages still resolve when a loaded record links to them or a pending proposal targets them.
+      const missing = new Set<string>()
+      for (const [index, cap] of capabilities.entries()) {
+        const references = Object.entries(cap.definition.entity.fields).filter(([, field]) => field.reference).map(([key]) => key)
+        for (const record of pages[index]) for (const key of references) {
+          const value = (record.data as RecordData)[key]
+          if (typeof value === 'string' && value && !loadedIds.has(value)) missing.add(value)
+        }
+      }
+      for (const change of scopedChanges) if (change.status === 'pending' && change.kind !== 'create' && !loadedIds.has(change.recordId)) missing.add(change.recordId)
+      const ids = [...missing]
+      const extras = (await Promise.all(Array.from({ length: Math.ceil(ids.length / 5000) }, (_, chunk) => tx.businessRecord.findMany({ where: { ...scope, id: { in: ids.slice(chunk * 5000, (chunk + 1) * 5000) } } })))).flat()
+      const records = [...paged, ...extras].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))
+      const recordPages: Record<string, RecordPageInfo> = Object.fromEntries(capabilities.map((cap, index) => [cap.slug, { loaded: pages[index].length, total: totals.find(row => row.capability === cap.slug)?._count._all ?? 0 }]))
       const recordIds = new Set(records.map(record => record.id))
-      const scopedChanges = slugs ? allChanges.filter(change => slugs.has(change.capability)) : allChanges
       const [proposers, credentials] = await Promise.all([
         tx.user.findMany({ where: { id: { in: [...new Set(scopedChanges.map(change => change.proposedBy))] } }, select: { id: true, name: true } }),
         tx.agentCredential.findMany({ where: { workspaceId: p.workspaceId, id: { in: scopedChanges.flatMap(change => change.agentCredentialId ? [change.agentCredentialId] : []) } }, select: { id: true, name: true } }),
@@ -513,12 +548,53 @@ export class Kernel {
       const capability = (current
         ? capabilities.find(cap => cap.slug === current.packages[0])
         : capabilities[0])
-      return { workspace, project: current, projects, capability, capabilities, records, changes, executions, tools, catalog: installed, principal: p }
+      return { workspace, project: current, projects, capability, capabilities, records, recordPages, changes, executions, tools, catalog: installed, principal: p, members: await this.assignmentMembers(tx, p, current?.slug) }
     })
   }
 
-  private async validateReferences(tx: Tx, p: Principal, fields: Record<string, import('./definition').Field>, data: RecordData) {
+  private async assignmentMembers(tx: Tx, p: Principal, projectSlug?: string) {
+    const members = await tx.membership.findMany({ where: { workspaceId: p.workspaceId, OR: [
+      { role: { in: ['owner', 'operator'] } },
+      ...(projectSlug ? [{ role: 'application', user: { projectMembers: { some: { project: { workspaceId: p.workspaceId, slug: projectSlug } } } } }] : []),
+    ] }, select: { user: { select: { id: true, name: true } } }, orderBy: { userId: 'asc' } })
+    return members.map(member => member.user)
+  }
+
+  private async validateReferences(tx: Tx, p: Principal, fields: Record<string, import('./definition').Field>, data: RecordData, capability?: string, recordId?: string) {
+    if (p.agentCredentialId) await lockCredential(tx, p.agentCredentialId)
+    // Definition changes hold the workspace row FOR UPDATE, so sharing it excludes publication without serializing record writes.
+    await tx.$queryRaw`SELECT "id" FROM "Workspace" WHERE "id" = ${p.workspaceId} FOR SHARE`
+    // Lock the written record before scanning its dependents, and share-lock referenced records and assigned members before reading them.
+    // A concurrent edit of either side then waits for this commit and rescans committed data.
+    if (recordId) await tx.$queryRaw`SELECT "id" FROM "BusinessRecord" WHERE "id" = ${recordId} AND "workspaceId" = ${p.workspaceId} FOR UPDATE`
+    const linked = (test: (field: import('./definition').Field) => boolean) => [...new Set(Object.entries(fields).flatMap(([key, field]) => test(field) && typeof data[key] === 'string' && data[key] && data[key] !== recordId ? [data[key] as string] : []))].sort()
+    const targets = linked(field => Boolean(field.reference))
+    if (targets.length) await tx.$queryRaw`SELECT "id" FROM "BusinessRecord" WHERE "workspaceId" = ${p.workspaceId} AND "id" IN (${Prisma.join(targets)}) ORDER BY "id" FOR SHARE`
+    const assignees = linked(field => field.format === 'user')
+    if (assignees.length) await tx.$queryRaw`SELECT "id" FROM "Membership" WHERE "workspaceId" = ${p.workspaceId} AND "userId" IN (${Prisma.join(assignees)}) ORDER BY "id" FOR SHARE`
+    const definitions = await tx.capability.findMany({ where: { workspaceId: p.workspaceId } })
+    const current = definitions.find(item => item.slug === capability)?.definition as Definition | undefined
+    if (current && canonical(current.entity.fields) !== canonical(fields)) throw new KernelError('STALE_RECORD', 'The definition changed. Refresh before saving.', 409)
+    if (recordId && capability) {
+      for (const entry of definitions) {
+        const definition = entry.definition as Definition
+        for (const [key, field] of Object.entries(definition.entity.fields)) {
+          if (field.reference !== capability || !field.referenceMatch) continue
+          const dependents: { id: string; data: Prisma.JsonValue }[] = await tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: entry.slug, data: { path: [key], equals: recordId } } })
+          for (const dependent of dependents) {
+            const source: RecordData = dependent.id === recordId ? data : dependent.data as RecordData
+            if (source[key] !== recordId) continue
+            if (!source[field.referenceMatch.sourceField] || data[field.referenceMatch.targetField] !== source[field.referenceMatch.sourceField]) throw new KernelError('INVALID_REFERENCE', `This change would invalidate a linked ${definition.entity.label.toLowerCase()}. Update or clear its ${field.label.toLowerCase()} first.`, 409)
+          }
+        }
+      }
+    }
     for (const [key, field] of Object.entries(fields)) {
+      if (field.format === 'user' && data[key]) {
+        const member = await tx.membership.findFirst({ where: { workspaceId: p.workspaceId, userId: String(data[key]), role: { in: ['owner', 'operator', 'application'] } } })
+        if (!member) throw new KernelError('INVALID_REFERENCE', `Choose an active workspace member for ${field.label}.`)
+        if (capability) await this.assertApplicationCapability(tx, { ...p, userId: member.userId, role: member.role }, capability)
+      }
       if (!field.reference) continue
       if (data[key] === undefined || data[key] === '') {
         if (field.required) throw new KernelError('INVALID_REFERENCE', `Choose an existing ${field.label} in this project.`)
@@ -526,6 +602,10 @@ export class Kernel {
       }
       const target = await tx.businessRecord.findFirst({ where: { id: String(data[key]), workspaceId: p.workspaceId, capability: field.reference } })
       if (!target) throw new KernelError('INVALID_REFERENCE', `Choose an existing ${field.label} in this project.`)
+      if (field.referenceMatch) {
+        const targetData = target.id === recordId ? data : target.data as RecordData
+        if (!data[field.referenceMatch.sourceField] || targetData[field.referenceMatch.targetField] !== data[field.referenceMatch.sourceField]) throw new KernelError('INVALID_REFERENCE', `${field.label} must match the selected ${fields[field.referenceMatch.sourceField].label.toLowerCase()}.`, 422)
+      }
     }
   }
 
@@ -743,6 +823,7 @@ export class Kernel {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p, 'construct')
       this.assertBuilder(p, 'Only an owner can publish a project.')
+      await tx.$queryRaw`SELECT "id" FROM "Workspace" WHERE "id" = ${p.workspaceId} FOR UPDATE`
       const draft = await tx.projectDraft.findFirst({ where: { id, workspaceId: p.workspaceId } })
       if (!draft) throw new KernelError('NOT_FOUND', 'Draft not found.', 404)
       const plan = await tx.builderPlan.findUnique({ where: { draftId: id } })
@@ -777,10 +858,15 @@ export class Kernel {
           const changed = await tx.businessRecord.updateMany({ where: { id: update.id, workspaceId: p.workspaceId, version: update.version }, data: { data: json(update.data), version: { increment: 1 } } })
           if (changed.count !== 1) throw new KernelError('STALE_PREVIEW', 'A record changed during publication. Preview again.', 409)
         }
+        for (const capability of plan.removedCapabilities) {
+          await tx.changeSet.updateMany({ where: { workspaceId: p.workspaceId, capability, status: 'pending' }, data: { status: 'rejected', reviewedBy: p.userId, reviewedAt: new Date() } })
+          await tx.businessRecord.deleteMany({ where: { workspaceId: p.workspaceId, capability } })
+          await tx.capability.deleteMany({ where: { workspaceId: p.workspaceId, slug: capability } })
+        }
         await tx.projectVersion.create({ data: { projectId: state.project.id, version, definition: json(app), migration: json(plan.report), publishedBy: p.userId } })
         const changedDraft = await tx.projectDraft.updateMany({ where: { id, workspaceId: p.workspaceId, status: 'draft', version: expectedVersion }, data: { status: 'published', publishedVersion: expectedVersion } })
         if (changedDraft.count !== 1) throw new KernelError('STALE_DRAFT', 'The draft changed during publication.', 409)
-        await this.event(tx, p, 'project.publish', 'applied', { projectSlug: slug, draftId: id, draftVersion: expectedVersion, fromVersion: state.project.version, toVersion: version, updatedRecords: plan.updates.length, invalidatedProposals: plan.report.invalidatedProposals })
+        await this.event(tx, p, 'project.publish', 'applied', { projectSlug: slug, draftId: id, draftVersion: expectedVersion, fromVersion: state.project.version, toVersion: version, updatedRecords: plan.updates.length, deletedRecords: plan.deletions.length, removedValues: plan.report.removedValueCount, removedEntities: plan.removedCapabilities, invalidatedProposals: plan.report.invalidatedProposals })
         return { slug, version, repeated: false }
       }
       const changed = await tx.projectDraft.updateMany({ where: { id, workspaceId: p.workspaceId, status: 'draft', version: expectedVersion }, data: { status: 'published', projectSlug: slug, publishedVersion: expectedVersion } })
@@ -796,13 +882,13 @@ export class Kernel {
 
   async publicSite(workspaceId: string) {
     const workspace = await this.db.workspace.findUnique({ where: { id: workspaceId } })
-    if (!workspace) throw new KernelError('NOT_FOUND', 'Workspace not found.', 404)
-    const [records, projectRows] = await Promise.all([
-      this.db.businessRecord.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' } }),
-      this.db.project.findMany({ where: { workspaceId } }),
-    ])
-    const siteProject = sortProjects(projectRows.map(toProjectSnapshot)).find(item => item.shell === 'site')
-    const installed = siteProject ? catalogFor(siteProject.packages) : catalogFor(['site', 'blog'])
+    const siteProject = workspace && sortProjects((await this.db.project.findMany({ where: { workspaceId } })).map(toProjectSnapshot)).find(item => item.shell === 'site')
+    if (!workspace || !siteProject) throw new KernelError('NOT_FOUND', 'Public site not found.', 404)
+    const installed = catalogFor(siteProject.packages)
+    const records = await this.db.businessRecord.findMany({
+      where: { workspaceId, capability: { in: installed.filter(item => item.view !== 'none').map(item => item.definition.slug) }, data: { path: ['status'], equals: 'published' } },
+      orderBy: { createdAt: 'desc' },
+    })
     return {
       workspace: { id: workspace.id, name: workspace.name },
       example: true,
@@ -819,7 +905,7 @@ export class Kernel {
       await this.assertApplicationCapability(tx, p, slug)
       const cap = await this.capability(tx, p.workspaceId, slug)
       const data = validateFields(cap.definition.entity.fields, raw, true)
-      await this.validateReferences(tx, p, cap.definition.entity.fields, data)
+      await this.validateReferences(tx, p, cap.definition.entity.fields, data, cap.slug)
       const record = await tx.businessRecord.create({ data: { workspaceId: p.workspaceId, capability: cap.slug, entity: cap.definition.entity.name, data: json(data) } })
       await this.event(tx, p, 'record.create', 'applied', { title: data.title, capability: cap.slug, version: 1 }, record.id)
       return record
@@ -844,8 +930,8 @@ export class Kernel {
       await authorizeAgentAction(tx, p.agentCredentialId, cap.slug, CREATE_ACTION, cap.version)
       let values: ReturnType<typeof creationValues>
       try { values = creationValues(cap.definition, command.input) }
-      catch (error) { throw new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid record fields.', 422) }
-      await this.validateReferences(tx, p, cap.definition.entity.fields, values.after)
+      catch (error) { throw inputFailure(error, 'INVALID_INPUT', 422) }
+      await this.validateReferences(tx, p, cap.definition.entity.fields, values.after, cap.slug)
       if (p.agentCredentialId) await lockCredential(tx, p.agentCredentialId)
       const existing = await tx.changeSet.findUnique({ where: { workspaceId_idempotencyKey: { workspaceId: p.workspaceId, idempotencyKey: command.idempotencyKey } } })
       if (existing) {
@@ -1038,23 +1124,38 @@ export class Kernel {
       const access = await resolveAgent(tx, p.agentCredentialId)
       if (!access.project || !asStringList(access.project.packages).includes(query.capability)) throw new KernelError('AGENT_SCOPE', 'Choose an entity in this application.', 403)
       const cap = await this.capability(tx, p.workspaceId, query.capability)
+      const savedView = query.viewId ? toProjectSnapshot(access.project).presentation?.views.find(view => view.id === query.viewId && view.entity === cap.slug) : undefined
+      if (query.viewId && !savedView) throw new KernelError('INVALID_INPUT', 'Choose a saved view for this entity.')
+      const now = new Date()
       const predicates: Prisma.BusinessRecordWhereInput[] = []
       for (const filter of query.filters) {
         const field = Object.hasOwn(cap.definition.entity.fields, filter.field) ? cap.definition.entity.fields[filter.field] : undefined
         if (!field) throw new KernelError('INVALID_INPUT', `Unknown filter field: ${filter.field}`)
         let value
         try { value = validateFields({ [filter.field]: field }, { [filter.field]: filter.value })[filter.field] }
-        catch (error) { throw new KernelError('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid filter value.') }
+        catch (error) { throw inputFailure(error, 'INVALID_INPUT') }
         predicates.push({ data: { path: [filter.field], equals: value } })
       }
       if (query.title) predicates.push({ data: { path: ['title'], string_contains: query.title } })
-      const fingerprint = createHash('sha256').update(canonical({ credential: p.agentCredentialId, capability: query.capability, version: cap.version, filters: query.filters, title: query.title ?? null })).digest('hex')
+      const fingerprint = createHash('sha256').update(canonical({ credential: p.agentCredentialId, capability: query.capability, version: cap.version, filters: query.filters, title: query.title ?? null, ...(savedView ? { savedView, today: calendarDate(now, savedView.timeZone) } : {}) })).digest('hex')
       let after: string | undefined
       if (query.cursor) {
         try {
           const cursor = z.object({ after: z.string().min(1).max(100), query: z.literal(fingerprint) }).strict().parse(JSON.parse(Buffer.from(query.cursor, 'base64url').toString()))
           after = cursor.after
         } catch { throw new KernelError('INVALID_INPUT', 'Cursor does not match this query or definition. Start a fresh query.') }
+      }
+      if (savedView) {
+        // Bound each page's scan. A sparse page may be empty with a continuation cursor.
+        const candidates = await tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: cap.slug, ...(after ? { id: { gt: after } } : {}), AND: predicates }, orderBy: { id: 'asc' }, take: 1001 })
+        const records: typeof candidates = []
+        let scanned = 0
+        for (const record of candidates.slice(0, 1000)) {
+          scanned++
+          if (matchesView(record.data as RecordData, savedView, { now, userId: p.userId, updatedAt: record.updatedAt })) records.push(record)
+          if (records.length === query.limit) break
+        }
+        return { capability: cap.slug, definitionVersion: cap.version, records, scanned, nextCursor: scanned < candidates.length ? Buffer.from(JSON.stringify({ after: candidates[scanned - 1].id, query: fingerprint })).toString('base64url') : null }
       }
       const records = await tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: cap.slug, ...(after ? { id: { gt: after } } : {}), AND: predicates }, orderBy: { id: 'asc' }, take: query.limit + 1 })
       return { capability: cap.slug, definitionVersion: cap.version, records: records.slice(0, query.limit), nextCursor: records.length > query.limit ? Buffer.from(JSON.stringify({ after: records[query.limit - 1].id, query: fingerprint })).toString('base64url') : null }
@@ -1093,7 +1194,28 @@ export class Kernel {
       })
       const records = await tx.businessRecord.findMany({ where: { workspaceId: p.workspaceId, capability: { in: packages }, ...(cursor ? { id: { gt: cursor } } : {}) }, orderBy: { id: 'asc' }, take: 101 })
       const staleActions = access.actions.filter(scope => !caps.some(cap => cap.slug === scope.capability && cap.version === scope.version))
-      return { project: { slug: access.project.slug, name: access.project.name, version: access.project.version }, capabilities, records: records.slice(0, 100), nextCursor: records.length > 100 ? records[99].id : null, staleActions, mode: 'Scoped operator access. Review is the default; only explicitly granted automatic operations may apply without review.' }
+      return { project: { slug: access.project.slug, name: access.project.name, version: access.project.version }, capabilities, members: await this.assignmentMembers(tx, p, access.project.slug), views: toProjectSnapshot(access.project).presentation?.views ?? [], currentUserId: p.userId, records: records.slice(0, 100), nextCursor: records.length > 100 ? records[99].id : null, staleActions, mode: 'Scoped operator access. Review is the default; only explicitly granted automatic operations may apply without review.' }
+    })
+  }
+
+  /** Human execution is explicit per action. Agent grants never inherit this permission. */
+  async act(p: Principal, command: { recordId: string; action: string; input: unknown; expectedVersion: number; definitionVersion: number }) {
+    return this.db.$transaction(async tx => {
+      await this.authorize(tx, p)
+      if (p.kind !== 'human') throw new KernelError('FORBIDDEN', 'Direct actions require a human session.', 403)
+      const record = await tx.businessRecord.findFirst({ where: { id: command.recordId, workspaceId: p.workspaceId } })
+      if (!record) throw new KernelError('NOT_FOUND', 'Record not found.', 404)
+      await this.assertApplicationCapability(tx, p, record.capability)
+      const cap = await this.capability(tx, p.workspaceId, record.capability)
+      if (cap.version !== command.definitionVersion || record.version !== command.expectedVersion) throw new KernelError('STALE_RECORD', 'This record or its definition changed. Refresh before saving.', 409)
+      if (cap.definition.actions.find(action => action.name === command.action)?.humanExecution !== 'direct') throw new KernelError('HUMAN_APPROVAL_REQUIRED', 'This action requires a reviewed proposal.', 403)
+      const result = evaluate(cap.definition, command.action, record.data as RecordData, command.input, recordRole(p.role))
+      if (!result.allowed) throw new KernelError('POLICY_BLOCKED', result.checks.find(check => !check.passed)?.message ?? 'Action blocked.', 403)
+      await this.validateReferences(tx, p, cap.definition.entity.fields, result.after, cap.slug, record.id)
+      const updated = await tx.businessRecord.updateMany({ where: { id: record.id, workspaceId: p.workspaceId, version: command.expectedVersion }, data: { data: json(result.after), version: { increment: 1 } } })
+      if (updated.count !== 1) throw new KernelError('STALE_RECORD', 'Another update was saved. Refresh before saving.', 409)
+      await this.event(tx, p, `${cap.slug}.${command.action}`, 'applied', { title: result.after.title, before: record.data, after: result.after, definitionVersion: cap.version, recordVersion: record.version + 1, executionMode: 'human' }, record.id)
+      return { status: 'applied', checks: result.checks }
     })
   }
 
@@ -1110,7 +1232,7 @@ export class Kernel {
       if (p.agentCredentialId) await authorizeAgentAction(tx, p.agentCredentialId, cap.slug, command.action, cap.version)
       await this.assertApplicationCapability(tx, p, cap.slug)
       const result = evaluate(cap.definition, command.action, record.data as RecordData, command.input, recordRole(p.role))
-      await this.validateReferences(tx, p, cap.definition.entity.fields, result.after)
+      await this.validateReferences(tx, p, cap.definition.entity.fields, result.after, cap.slug, record.id)
       if (p.agentCredentialId) await lockCredential(tx, p.agentCredentialId)
       const existing = await tx.changeSet.findUnique({ where: { workspaceId_idempotencyKey: { workspaceId: p.workspaceId, idempotencyKey: command.idempotencyKey } } })
       if (existing) {
@@ -1164,7 +1286,7 @@ export class Kernel {
         if (!change.agentCredentialId) throw new KernelError('AGENT_SCOPE', 'Creation proposals require a scoped credential.', 403)
         await authorizeAgentAction(tx, change.agentCredentialId, cap.slug, CREATE_ACTION, cap.version)
         const values = creationValues(cap.definition, change.input)
-        await this.validateReferences(tx, p, cap.definition.entity.fields, values.after)
+        await this.validateReferences(tx, p, cap.definition.entity.fields, values.after, cap.slug)
         if (canonical(values.after) !== canonical(change.after)) throw new KernelError('CONFLICT', 'Creation fields no longer match the proposal.', 409)
         await tx.businessRecord.create({ data: { id: change.recordId, workspaceId: p.workspaceId, capability: cap.slug, entity: cap.definition.entity.name, data: json(values.after) } })
       } else if (decision === 'apply') {
@@ -1174,7 +1296,7 @@ export class Kernel {
         if (!proposer) throw new KernelError('FORBIDDEN', 'The proposer no longer belongs to this workspace.', 403)
         const agentAccess = change.agentCredentialId ? await authorizeAgentAction(tx, change.agentCredentialId, cap.slug, change.action, cap.version) : undefined
         const result = evaluate(cap.definition, change.action, record.data as RecordData, change.input, agentAccess ? agentAccess.p.role : recordRole(proposer.role))
-        await this.validateReferences(tx, p, cap.definition.entity.fields, result.after)
+        await this.validateReferences(tx, p, cap.definition.entity.fields, result.after, cap.slug, record.id)
         if (!result.allowed) throw new KernelError('POLICY_BLOCKED', 'The proposal no longer meets current business rules.', 409)
         if (JSON.stringify(result.after) !== JSON.stringify(change.after)) throw new KernelError('CONFLICT', 'The proposed effects do not match the current action.', 409)
         const updated = await tx.businessRecord.updateMany({ where: { id: record.id, workspaceId: p.workspaceId, version: change.recordVersion }, data: { data: json(result.after), version: { increment: 1 } } })
@@ -1188,12 +1310,13 @@ export class Kernel {
     return this.db.$transaction(async tx => {
       await this.authorize(tx, p)
       if (p.kind !== 'human' || p.role !== 'owner') throw new KernelError('FORBIDDEN', 'Only the workspace owner can publish settings.', 403)
+      await tx.$queryRaw`SELECT "id" FROM "Workspace" WHERE "id" = ${p.workspaceId} FOR UPDATE`
       const cap = await this.capability(tx, p.workspaceId, command.capability)
       const managed = (await tx.project.findMany({ where: { workspaceId: p.workspaceId } })).find(project => project.definition && asStringList(project.packages).includes(cap.slug))
       if (managed) throw new KernelError('MANAGED_DEFINITION', 'Change this application through a reviewed draft. Settings are part of the published definition.', 409)
       let definition
       try { definition = applySettings(cap.definition, command.settings) }
-      catch (error) { throw new KernelError('INVALID_SETTINGS', error instanceof Error ? error.message : 'Invalid settings.') }
+      catch (error) { throw inputFailure(error, 'INVALID_SETTINGS') }
       const changed = await tx.capability.updateMany({ where: { id: cap.id, workspaceId: p.workspaceId, version: command.expectedVersion }, data: { definition: json(definition), version: { increment: 1 } } })
       if (changed.count !== 1) throw new KernelError('STALE_DEFINITION', 'A newer capability version exists. Refresh before publishing.', 409)
       await tx.capabilityVersion.create({ data: { capabilityId: cap.id, version: cap.version + 1, definition: json(definition), publishedBy: p.userId } })

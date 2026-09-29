@@ -1,4 +1,5 @@
 import { composeSurface } from './blocks'
+import { InputError } from './errors'
 import type { GrammarId } from './grammars'
 import { grammarById } from './grammars'
 import { moduleById } from './modules'
@@ -169,7 +170,33 @@ function supportPattern(): KernelPattern {
   }
 }
 
-export const kernelPatterns: KernelPattern[] = [purchasingPattern(), crmPattern(), issuesPattern(), paymentsPattern(), supportPattern()]
+function advancedCrmPattern(): KernelPattern {
+  return {
+    id: 'crm_sales', name: 'Sales CRM', description: 'Manage accounts, contacts, deals, follow-up tasks and sales activities.', shell: 'tracker', home: 'deals_today',
+    assumptions: ['Values are USD only; no currency conversion. The weighted forecast multiplies open deal value by win probability, which each stage sets and reps can adjust.', 'Deals and tasks are assigned to workspace members; assignment does not grant access.', 'Routine human actions save immediately with version checks and audit history. Agent operations still require their own grants.', 'Moving a deal forward requires the details for that stage. Tasks and activities link to a deal, an account or a contact.'],
+    modules: [
+      { use: 'sales.deal', version: 5, as: 'opportunities' }, { use: 'directory.account', as: 'customers' },
+      { use: 'directory.contact', as: 'contacts' },
+      { use: 'sales.task', version: 5, as: 'tasks' }, { use: 'sales.activity', version: 5, as: 'activities' },
+    ],
+    links: [
+      { from: 'opportunities.customer', to: 'customers' }, { from: 'opportunities.contactPerson', to: 'contacts' },
+      { from: 'contacts.account', to: 'customers' },
+      ...['tasks', 'activities'].flatMap(entity => [{ from: `${entity}.deal`, to: 'opportunities' }, { from: `${entity}.account`, to: 'customers' }, { from: `${entity}.contact`, to: 'contacts' }]),
+    ],
+    surfaces: [
+      { grammar: 'board', of: 'opportunities', view: 'pipeline', label: 'Deals' },
+      ...['my_deals', 'deals_today', 'deals_overdue', 'stalled_deals', 'missing_next_step'].map(view => ({ grammar: 'ledger' as const, of: 'opportunities', view })),
+      ...['my_tasks', 'tasks_today', 'tasks_overdue'].map(view => ({ grammar: 'ledger' as const, of: 'tasks', view })),
+      { grammar: 'ledger', of: 'opportunities', view: 'followups' }, { grammar: 'ledger', of: 'opportunities', view: 'forecast' }, { grammar: 'overview', of: 'opportunities', view: 'overview' },
+      { grammar: 'detail', of: 'opportunities' }, { grammar: 'directory', of: 'customers', view: 'accounts', label: 'Accounts' },
+      { grammar: 'directory', of: 'contacts', view: 'contacts' },
+      { grammar: 'ledger', of: 'tasks', view: 'tasks' }, { grammar: 'ledger', of: 'activities', view: 'activities' },
+    ],
+  }
+}
+
+export const kernelPatterns: KernelPattern[] = [purchasingPattern(), crmPattern(), advancedCrmPattern(), issuesPattern(), paymentsPattern(), supportPattern()]
 
 export function patternById(id: string) {
   return kernelPatterns.find(pattern => pattern.id === id)
@@ -191,7 +218,7 @@ export function patternCatalog() {
     links: pattern.links.map(link => ({ ...link })),
     surfaces: pattern.surfaces.map(surface => {
       const grammar = grammarById(surface.grammar)
-      if (!grammar) throw new Error(`Unknown grammar: ${surface.grammar}`)
+      if (!grammar) throw new InputError(`Unknown grammar: ${surface.grammar}`)
       const instance = pattern.modules.find(item => item.as === surface.of)
       const mod = moduleById(instance?.use ?? '', instance?.version ?? 1)
       return {

@@ -383,7 +383,7 @@ test('assembled drafts compile, persist the assembly, and reopen it when changin
   assert.equal(ticket?.defaultAlias, 'tickets')
   assert.equal(ticket?.ports.some(port => port.field === 'requester' && port.required === true), true)
   assert.equal(ticket?.ports.some(port => port.field === 'project'), false)
-  assert.deepEqual((await kernel.listPatterns(human)).map(item => item.id), ['purchasing', 'crm', 'issues', 'payments', 'support'])
+  assert.deepEqual((await kernel.listPatterns(human)).map(item => item.id), ['purchasing', 'crm', 'crm_sales', 'issues', 'payments', 'support'])
   const payments = await kernel.saveDraft(human, { brief: 'Payments ledger for the operations team', pattern: 'payments', source: 'agent' })
   assert.deepEqual(payments.assembly, assemblePattern('payments'))
   assert.equal(payments.definition.startView, 'ledger')
@@ -548,10 +548,9 @@ test('updated defaults never overwrite existing values; new entities start empty
   assert.equal((state.records.find(r => r.id === record.id)!.data as RecordData).department, 'General')
 })
 
-test('migration blocks removals, type changes, and incompatible required fields without mutating live data', async () => {
+test('migration blocks type changes, relationship retargeting, and incompatible required fields without mutating live data', async () => {
   const { human, slug, record } = await publishedFixture()
   const variants: ((app: import('../src/kernel/application').Application) => void)[] = [
-    app => { delete app.entities[1].entity.fields.contact },
     app => { app.entities[1].entity.fields.contact = { label: 'Contact', type: 'boolean', required: false, editable: true, default: false } },
     app => { app.entities[0].entity.fields.department = { label: 'Department', type: 'string', required: true, editable: true } },
     app => { app.entities[0].entity.fields.supplier.required = false; delete app.entities[0].entity.fields.supplier.reference; app.entities.pop() },
@@ -1238,6 +1237,45 @@ test('application invitations grant one application and skip a private workspace
   assert.equal(await db.projectMember.count({ where: { userId: id } }), 0)
 })
 
+test('a workspace invitation upgrades an application member to a workspace role', async () => {
+  const a = await fixture()
+  const email = `app-upgrade-${sequence}@example.test`
+  const id = `app-upgrade-${sequence}`
+  await db.user.create({ data: { id, name: 'App Upgrade', email } })
+  const joined = await kernel.acceptApplicationInvite({ id, name: 'App Upgrade', email }, (await kernel.inviteApplicationUser(a.human, 'procurement', email)).token)
+  await assert.rejects(kernel.inviteApplicationUser(a.human, 'procurement', email), /already uses/)
+  const invite = await kernel.inviteMember(a.human, email, 'operator')
+  const member: Principal = { userId: id, name: 'App Upgrade', workspaceId: joined.workspaceId, role: 'application', kind: 'human' }
+  await kernel.acceptInvitation(member, invite.token)
+  assert.equal((await kernel.workspaceMembership({ id, name: 'App Upgrade' }, a.human.workspaceId)).role, 'operator')
+  assert.equal(await db.projectMember.count({ where: { userId: id } }), 0)
+  assert.ok((await kernel.snapshot({ ...member, role: 'operator' })).projects.length > 1)
+  await assert.rejects(kernel.inviteMember(a.human, email, 'owner'), /already belongs/)
+})
+
+test('snapshots page the newest records per entity and keep records with pending proposals', async () => {
+  const { human, agent, record } = await fixture()
+  const base = Date.now() - 86400000
+  await db.businessRecord.createMany({ data: Array.from({ length: 600 }, (_, index) => ({ workspaceId: human.workspaceId, capability: record.capability, entity: record.entity, data: record.data as object, createdAt: new Date(base + index * 1000) })) })
+  await db.businessRecord.update({ where: { id: record.id }, data: { createdAt: new Date(0) } })
+  await kernel.stage(agent, { recordId: record.id, action: 'approve', input: {}, idempotencyKey: `page-${record.id}` })
+  const total = await db.businessRecord.count({ where: { workspaceId: human.workspaceId, capability: record.capability } })
+  const first = await kernel.snapshot(human, 'procurement')
+  assert.deepEqual(first.recordPages[record.capability], { loaded: 500, total })
+  assert.ok(first.records.some(item => item.id === record.id), 'a record with a pending proposal loads even when it is older than the page')
+  const loaded = first.records.filter(item => item.capability === record.capability && item.id !== record.id)
+  assert.ok(loaded.every((item, index) => index === 0 || loaded[index - 1].createdAt >= item.createdAt))
+  assert.equal((await kernel.snapshot(human, 'procurement', { [record.capability]: 501 })).recordPages[record.capability].loaded, Math.min(1000, total))
+  assert.equal((await kernel.snapshot(human, 'procurement', { [record.capability]: 10 ** 9 })).recordPages[record.capability].loaded, total)
+})
+
+test('the public site is unavailable without a site project', async () => {
+  const { human } = await fixture()
+  await db.project.deleteMany({ where: { workspaceId: human.workspaceId, shell: 'site' } })
+  await assert.rejects(kernel.publicSite(human.workspaceId), /Public site not found/)
+  await assert.rejects(kernel.publicSite('missing-workspace'), /Public site not found/)
+})
+
 test('MCP custom definitions support discovery, reviewed operation and additive evolution', async () => {
   const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
   const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
@@ -1264,7 +1302,7 @@ test('MCP custom definitions support discovery, reviewed operation and additive 
       return reply.structuredContent as T
     }
     const { contract } = await call<{ contract: ReturnType<typeof import('../src/kernel/application-contract').applicationContract> }>('get_application_contract')
-    assert.equal(contract.version, 3)
+    assert.equal(contract.version, 8)
     assert.equal(contract.schema.type, 'object')
     assert.equal(contract.limits.entities, 8)
     assert.ok(contract.semantics.relationships.includes('record IDs'))

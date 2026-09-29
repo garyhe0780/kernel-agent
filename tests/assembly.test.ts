@@ -77,13 +77,13 @@ test('generic blocks bind to views or records and do not carry business meaning'
 
 test('one catalog namespace lists grammars and patterns', () => {
   assert.deepEqual(grammarCatalog().map(item => item.id), ['overview', 'board', 'ledger', 'directory', 'detail'])
-  assert.deepEqual(patternCatalog().map(item => item.id), ['purchasing', 'crm', 'issues', 'payments', 'support'])
+  assert.deepEqual(patternCatalog().map(item => item.id), ['purchasing', 'crm', 'crm_sales', 'issues', 'payments', 'support'])
   assert.equal(patternCatalog().find(item => item.id === 'purchasing')?.homeGrammar, 'ledger')
   assert.equal(patternCatalog().find(item => item.id === 'crm')?.homeGrammar, 'overview')
   assert.equal(patternCatalog().find(item => item.id === 'issues')?.homeGrammar, 'board')
   assert.equal(patternCatalog().find(item => item.id === 'payments')?.homeGrammar, 'ledger')
   assert.equal(patternCatalog().find(item => item.id === 'support')?.homeGrammar, 'board')
-  assert.deepEqual(patternCatalog().map(item => [item.id, item.shell]), [['purchasing', 'ledger'], ['crm', 'dashboard'], ['issues', 'tracker'], ['payments', 'ledger'], ['support', 'inbox']])
+  assert.deepEqual(patternCatalog().map(item => [item.id, item.shell]), [['purchasing', 'ledger'], ['crm', 'dashboard'], ['crm_sales', 'tracker'], ['issues', 'tracker'], ['payments', 'ledger'], ['support', 'inbox']])
   assert.equal(assemblePattern('purchasing').pattern, 'purchasing')
   assert.deepEqual(assemblePattern('crm'), salesAssembly())
   assert.deepEqual(assemblePattern('issues'), linearAssembly())
@@ -109,6 +109,19 @@ test('overview aggregates count, status, integer sums and createdAt trend', () =
   assert.equal(result.sums[0].total, 175)
   assert.equal(result.trend.thisWeek, 1)
   assert.equal(result.trend.priorWeek, 1)
+  assert.equal(result.sums[0].open, undefined, 'without closed statuses there is no open total')
+  const closed = viewAggregates([
+    { createdAt: '2026-09-20T00:00:00Z', data: { status: 'submitted', amountCents: 100 } },
+    { createdAt: '2026-09-10T00:00:00Z', data: { status: 'approved', amountCents: 50 } },
+  ], { ...fields, status: { ...fields.status, closed: ['approved'] } }, now)
+  assert.equal(closed.sums[0].total, 150)
+  assert.equal(closed.sums[0].open, 100)
+  const weighted = viewAggregates([
+    { createdAt: '2026-09-20T00:00:00Z', data: { status: 'submitted', amountCents: 1000, chance: 25 } },
+    { createdAt: '2026-09-20T00:00:00Z', data: { status: 'draft', amountCents: 500, chance: 60 } },
+    { createdAt: '2026-09-10T00:00:00Z', data: { status: 'approved', amountCents: 5000, chance: 100 } },
+  ], { ...fields, status: { ...fields.status, closed: ['approved'] }, chance: { label: 'Chance', type: 'integer' as const, format: 'percent' as const, required: true, editable: true } }, now)
+  assert.deepEqual(weighted.sums.map(sum => [sum.field, sum.open, sum.weighted]), [['amountCents', 1500, 550]], 'percent fields weight open amounts and are not summed')
 })
 
 test('catalog snapshot names actions and the surfaces each module projects', () => {

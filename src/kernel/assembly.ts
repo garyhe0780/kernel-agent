@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { InputError } from './errors'
 import { moduleCatalog, portRequired, viewGrammar } from './modules'
 import type { ModuleCatalog } from './module-contract'
 import { grammarFromLegacyKind, grammarIds, isGrammarId } from './grammars'
@@ -49,15 +50,15 @@ export type Assembly = z.infer<typeof assemblySchema>
 
 export function validateAssembly(raw: unknown, catalog: ModuleCatalog = moduleCatalog): Assembly {
   const assembly = assemblySchema.parse(raw)
-  if (assembly.pattern && !patternById(assembly.pattern)) throw new Error(`Unknown pattern: ${assembly.pattern}`)
+  if (assembly.pattern && !patternById(assembly.pattern)) throw new InputError(`Unknown pattern: ${assembly.pattern}`)
   const aliases = new Set<string>()
   const instances = assembly.modules.map(item => {
-    if (aliases.has(item.as)) throw new Error('Module aliases must be unique.')
+    if (aliases.has(item.as)) throw new InputError('Module aliases must be unique.')
     aliases.add(item.as)
     const mod = catalog.get(item.use, item.version)
-    if (!mod) throw new Error(`Unknown module: ${item.use}@${item.version}`)
+    if (!mod) throw new InputError(`Unknown module: ${item.use}@${item.version}`)
     for (const key of Object.keys(item.settings ?? {})) {
-      if (!Object.hasOwn(mod.definition.settings, key)) throw new Error(`Unknown setting ${key} on ${item.use}.`)
+      if (!Object.hasOwn(mod.definition.settings, key)) throw new InputError(`Unknown setting ${key} on ${item.use}.`)
     }
     return { item, mod }
   })
@@ -67,34 +68,34 @@ export function validateAssembly(raw: unknown, catalog: ModuleCatalog = moduleCa
     const [alias, field] = link.from.split('.')
     const source = byAlias.get(alias)
     const port = source?.mod.ports.find(item => item.field === field)
-    if (!source || !port) throw new Error(`Link ${link.from} does not match a module port.`)
+    if (!source || !port) throw new InputError(`Link ${link.from} does not match a module port.`)
     const target = byAlias.get(link.to)
-    if (!target || (target.mod.id !== port.target || target.mod.version !== port.targetVersion)) throw new Error(`Link target ${link.to} is not a ${port.target}@${port.targetVersion} module.`)
-    if (bound.has(link.from)) throw new Error(`Port ${field} on ${alias} is already linked.`)
+    if (!target || (target.mod.id !== port.target || target.mod.version !== port.targetVersion)) throw new InputError(`Link target ${link.to} is not a ${port.target}@${port.targetVersion} module.`)
+    if (bound.has(link.from)) throw new InputError(`Port ${field} on ${alias} is already linked.`)
     bound.add(link.from)
   }
   for (const { item, mod } of instances) {
     for (const port of mod.ports) {
-      if (portRequired(port) && !bound.has(`${item.as}.${port.field}`)) throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
+      if (portRequired(port) && !bound.has(`${item.as}.${port.field}`)) throw new InputError(`Port ${port.field} on ${item.as} must be linked.`)
     }
   }
   const viewIds = new Set<string>()
   for (const surface of assembly.surfaces) {
-    if (!isGrammarId(surface.grammar)) throw new Error(`Unknown grammar: ${surface.grammar}.`)
+    if (!isGrammarId(surface.grammar)) throw new InputError(`Unknown grammar: ${surface.grammar}.`)
     const instance = byAlias.get(surface.of)
-    if (!instance) throw new Error('Surface refers to an unknown module instance.')
+    if (!instance) throw new InputError('Surface refers to an unknown module instance.')
     if (surface.grammar === 'detail') {
-      if (!instance.mod.layout) throw new Error('Layout surface requires a module with a record layout.')
+      if (!instance.mod.layout) throw new InputError('Layout surface requires a module with a record layout.')
       continue
     }
-    if (!surface.view) throw new Error(`Surface ${surface.grammar} needs a view from ${instance.mod.id}.`)
+    if (!surface.view) throw new InputError(`Surface ${surface.grammar} needs a view from ${instance.mod.id}.`)
     const view = instance.mod.views.find(item => item.id === surface.view)
-    if (!view) throw new Error(`View ${surface.view} is not provided by ${instance.mod.id}.`)
+    if (!view) throw new InputError(`View ${surface.view} is not provided by ${instance.mod.id}.`)
     const id = surface.view
-    if (viewIds.has(id)) throw new Error('View identifiers must be unique.')
+    if (viewIds.has(id)) throw new InputError('View identifiers must be unique.')
     viewIds.add(id)
   }
-  if (assembly.startView && !viewIds.has(assembly.startView)) throw new Error('Choose an existing assembled view as the starting view.')
+  if (assembly.startView && !viewIds.has(assembly.startView)) throw new InputError('Choose an existing assembled view as the starting view.')
   return assembly
 }
 
@@ -103,7 +104,7 @@ export function selectionForModules(ids: string[], catalog: ModuleCatalog = modu
   const seen = new Set<string>()
   function add(id: string, version?: number) {
     const mod = version === undefined ? catalog.latest(id) : catalog.get(id, version)
-    if (!mod) throw new Error(`Unknown module: ${id}`)
+    if (!mod) throw new InputError(`Unknown module: ${id}`)
     const key = `${id}@${mod.version}`
     if (seen.has(key)) return
     seen.add(key)
@@ -140,7 +141,7 @@ export function assembleSelection(input: {
 }, catalog: ModuleCatalog = moduleCatalog): Assembly {
   const modules = input.modules.map(item => {
     const mod = item.version === undefined ? catalog.latest(item.use) : catalog.get(item.use, item.version)
-    if (!mod) throw new Error(`Unknown module: ${item.use}@${item.version}`)
+    if (!mod) throw new InputError(`Unknown module: ${item.use}@${item.version}`)
     return {
       use: item.use,
       version: mod.version,
@@ -154,10 +155,10 @@ export function assembleSelection(input: {
     const mod = catalog.get(item.use, item.version)!
     return mod.ports.flatMap(port => {
       const matches = modules.filter(entry => entry.use === port.target && entry.version === port.targetVersion)
-      if (matches.length > 1) throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
+      if (matches.length > 1) throw new InputError(`Port ${port.field} on ${item.as} must be linked.`)
       if (matches.length === 1) return [{ from: `${item.as}.${port.field}`, to: matches[0].as }]
       if (!portRequired(port)) return []
-      throw new Error(`Port ${port.field} on ${item.as} must be linked.`)
+      throw new InputError(`Port ${port.field} on ${item.as} must be linked.`)
     })
   })
   const surfaces = modules.flatMap(item => {

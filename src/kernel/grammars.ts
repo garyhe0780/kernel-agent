@@ -1,3 +1,5 @@
+import { InputError } from './errors'
+
 /** Closed catalog of working designs. A grammar chooses wired blocks, starting layout, and density. */
 
 export const workingGrammars = ['overview', 'board', 'ledger', 'directory'] as const
@@ -87,5 +89,5 @@ export function grammarFromLegacyKind(kind: string, view?: string): GrammarId {
   if (kind === 'detail' || kind === 'directory') return kind
   if (kind === 'queue') return view === 'board' ? 'board' : 'ledger'
   if (isGrammarId(kind)) return kind
-  throw new Error(`Unknown surface grammar: ${kind}.`)
+  throw new InputError(`Unknown surface grammar: ${kind}.`)
 }

@@ -1,0 +1,7 @@
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "postgres", schema "public" at "db.prisma.io:5432"
+
+
+Environment variables loaded from .env
+Error: Schema engine error:
+

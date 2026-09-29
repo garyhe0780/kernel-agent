@@ -1,6 +1,13 @@
 import { definitionSchema } from './definition'
 import { procurement } from './procurement'
 import { createModuleCatalog, type KernelModule, type ModuleSource } from './module-contract'
+import { relationshipConsistencyModules } from './modules/relationship-consistency'
+import { followThroughModules } from './modules/follow-through'
+import { memberOwnershipModules } from './modules/member-ownership'
+import { forecastingModules } from './modules/forecasting'
+import { directoryModules } from './modules/directory'
+import { workModules } from './modules/work'
+import { salesModules } from './modules/sales'
 import { milestoneModule } from './modules/milestone'
 export type { KernelModule } from './module-contract'
 
@@ -334,6 +341,10 @@ function ticketModule(): ModuleBody {
 export const moduleCatalog = createModuleCatalog([
   ...[requestModule(), opportunityModule(), partyModule(), projectModule(), issueModule(), movementModule(), ticketModule()].map(mod => ({ ...mod, contractVersion: 1, version: 1 })),
   milestoneModule,
+  ...directoryModules,
+  ...workModules,
+  ...salesModules,
+  ...followThroughModules, ...relationshipConsistencyModules, ...memberOwnershipModules, ...forecastingModules,
 ])
 export const kernelModules = moduleCatalog.list()
 

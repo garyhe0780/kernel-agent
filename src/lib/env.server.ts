@@ -9,6 +9,8 @@ export type KernelEnv = {
   KERNEL_PGLITE_DIR?: string
   BETTER_AUTH_SECRET?: string
   BETTER_AUTH_URL?: string
+  RESEND_API_KEY?: string
+  KERNEL_EMAIL_FROM?: string
   KERNEL_SIGNUP_CODE?: string
   KERNEL_API_KEY?: string
   OPENAI_API_KEY?: string
@@ -32,6 +34,8 @@ export function runtimeEnv(): KernelEnv {
     KERNEL_PGLITE_DIR: process.env.KERNEL_PGLITE_DIR,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    RESEND_API_KEY: process.env.RESEND_API_KEY || bindings.RESEND_API_KEY,
+    KERNEL_EMAIL_FROM: process.env.KERNEL_EMAIL_FROM || bindings.KERNEL_EMAIL_FROM,
     KERNEL_SIGNUP_CODE: process.env.KERNEL_SIGNUP_CODE,
     KERNEL_API_KEY: process.env.KERNEL_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
@@ -46,6 +50,15 @@ export function runtimeEnv(): KernelEnv {
 
 export function authUrl() {
   return runtimeEnv().BETTER_AUTH_URL?.trim() || 'http://localhost:3000'
+}
+
+const localOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000']
+
+/** Browser origins allowed to make cookie-authenticated writes. Loopback aliases apply only to a loopback deployment. */
+export function trustedOrigins(base = authUrl()) {
+  const { hostname } = new URL(base)
+  const local = hostname === 'localhost' || hostname === '127.0.0.1'
+  return [...new Set([new URL(base).origin, ...(local ? localOrigins : [])])]
 }
 
 export function postgresConnectionString() {

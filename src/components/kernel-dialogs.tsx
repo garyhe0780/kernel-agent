@@ -1,3 +1,5 @@
+import { actionFormData, actionReferenceFields, relationshipSelection, validateRelationshipSelections } from '@/lib/relationship-selection'
+import { useAssignmentMembers, memberLabel } from './record-context'
 import { Fragment, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -6,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Alert, Badge, Spinner, Switch } from '@/components/ui/surfaces'
 import { validateFields, type Definition } from '@/kernel/definition'
+import { recordSections, type RecordLayout } from '@/kernel/application-layouts'
 import { money, date, type Proposal, type BusinessRecord } from '@/lib/client'
 import { actionPreview, fieldLabel, statusLabel, statusVariant } from '@/lib/project-ui'
 import type { RecordData } from '@/kernel/definition'
@@ -46,29 +49,32 @@ export function CreateRequestDialog({ open, busy, onOpenChange, onCreate }: {
   )
 }
 
-export function CreateEntityDialog({ open, definition, records = [], error, busy, onOpenChange, onCreate }: {
+export function CreateEntityDialog({ open, definition, layout, records = [], initialReferences = {}, error, busy, onOpenChange, onCreate }: {
   open: boolean
   definition: Definition
+  layout?: RecordLayout
   records?: BusinessRecord[]
+  initialReferences?: Record<string, string>
   error?: string
   busy: boolean
   onOpenChange: (open: boolean) => void
   onCreate: (data: Record<string, string | number | boolean>) => void
 }) {
+  const members = useAssignmentMembers()
   const [validationError, setValidationError] = useState('')
-  const fields = Object.entries(definition.entity.fields).filter(([, field]) => field.editable)
-  const enums = Object.fromEntries(fields.filter(([, field]) => field.type === 'enum').map(([key, field]) => [key, String(field.default ?? field.options?.[0] ?? '')]))
+  const fields = recordSections(definition, layout).flatMap(section => section.fields).map(key => [key, definition.entity.fields[key]] as const).filter(([, field]) => field.editable)
+  const enums = Object.fromEntries(fields.filter(([, field]) => (field.type === 'enum' || field.format === 'user')).map(([key, field]) => [key, String(field.default ?? field.options?.[0] ?? '')]))
   const [choices, setChoices] = useState(enums)
   const [references, setReferences] = useState<Record<string, string>>({})
   const [flags, setFlags] = useState<Record<string, boolean>>({})
   useEffect(() => {
     setChoices(enums)
-    setReferences({})
+    setReferences(initialReferences)
     setValidationError('')
     setFlags(Object.fromEntries(fields.filter(([, field]) => field.type === 'boolean').map(([key, field]) => [key, Boolean(field.default)])))
   }, [definition.slug, open])
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={`New ${definition.entity.label.toLowerCase()}`} description={`Create a ${definition.entity.label.toLowerCase()} in this application.`}>
+    <Dialog open={open} onOpenChange={next => { if (!busy) onOpenChange(next) }} title={`New ${definition.entity.label.toLowerCase()}`} description={`Add ${definition.entity.label.toLowerCase()} details below.`}>
       <Form onSubmit={event => {
         event.preventDefault()
         const values = new FormData(event.currentTarget)
@@ -77,7 +83,7 @@ export function CreateEntityDialog({ open, definition, records = [], error, busy
           if (value) data[key] = value
         }
         for (const [key, field] of fields) {
-          if (field.type === 'enum' || field.type === 'boolean' || field.reference) continue
+          if (field.type === 'enum' || field.type === 'boolean' || field.reference || field.format === 'user') continue
           if (key === 'amountCents') {
             data[key] = Math.round(Number(values.get('amount')) * 100)
             continue
@@ -92,13 +98,19 @@ export function CreateEntityDialog({ open, definition, records = [], error, busy
           for (const [key, field] of fields) {
             if (field.reference && ((field.required && !valid[key]) || (valid[key] && !records.some(r => r.id === valid[key] && r.capability === field.reference)))) throw new Error(`Choose an existing ${field.label.toLowerCase()}. Create one in its entity queue first if the list is empty.`)
           }
+          validateRelationshipSelections(definition.entity.fields, valid, records)
           onCreate(data)
         } catch (caught) { setValidationError(caught instanceof Error ? caught.message : 'Check the required fields.') }
       }}>
         <FieldGroup>
           {validationError || error ? <Alert variant="danger">{validationError || error}</Alert> : null}
           {fields.map(([key, field]) => {
-            if (field.reference) return <Select key={key} label={`${field.label}${field.required ? ' (required)' : ''}`} value={references[key] ?? ''} onChange={value => setReferences(current => ({ ...current, [key]: value }))} options={[{ value: '', label: `Choose ${field.label.toLowerCase()}` }, ...records.filter(r => r.capability === field.reference).map(r => ({ value: r.id, label: String(r.data.title) }))]} />
+            if (field.format === 'user') return <Select key={key} label={field.label} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={[{ value: '', label: 'Unassigned' }, ...members.map(member => ({ value: member.id, label: member.name }))]} />
+            if (field.reference && initialReferences[key]) return <p key={key}><strong>{field.label}:</strong> {String(records.find(record => record.id === initialReferences[key] && record.capability === field.reference)?.data.title ?? 'Unavailable record')}</p>
+            if (field.reference) {
+              const selection = relationshipSelection(field, [field], definition.entity.fields, references, records, references[key] ?? '')
+              return <Select key={key} label={`${field.label}${field.required ? ' (required)' : ''}`} value={references[key] ?? ''} onChange={value => { setReferences(current => ({ ...current, [key]: value })); setValidationError('') }} {...selection} />
+            }
             if (field.type === 'boolean') {
               return <Switch key={key} label={field.label} checked={Boolean(flags[key])} onChange={value => setFlags(current => ({ ...current, [key]: value }))} />
             }
@@ -107,9 +119,9 @@ export function CreateEntityDialog({ open, definition, records = [], error, busy
             }
             if (key === 'amountCents') {
               return (
-                <Field key={key} name="amount" type="number" isRequired>
+                <Field key={key} name="amount" type="number" isRequired defaultValue={field.default === undefined ? undefined : String(Number(field.default) / 100)}>
                   <FieldLabel>Amount (USD)</FieldLabel>
-                  <Input step="0.01" min="0.01" />
+                  <Input step="0.01" min={(field.min ?? 0) / 100} />
                   <FieldError />
                 </Field>
               )
@@ -118,7 +130,7 @@ export function CreateEntityDialog({ open, definition, records = [], error, busy
             return (
               <Field key={key} name={key} type={field.type === 'integer' ? 'number' : 'text'} isRequired={field.required} minLength={field.type === 'string' ? field.min : undefined} maxLength={field.type === 'string' ? field.max : undefined}>
                 <FieldLabel>{field.label}</FieldLabel>
-                {long ? <Textarea /> : <Input min={field.type === 'integer' ? field.min : undefined} max={field.type === 'integer' ? field.max : undefined} />}
+                {long ? <Textarea /> : <Input type={field.format === 'date' ? 'date' : undefined} min={field.type === 'integer' ? field.min : undefined} max={field.type === 'integer' ? field.max : undefined} />}
                 <FieldError />
               </Field>
             )
@@ -143,12 +155,26 @@ export function ActionDialog({ open, actionName, record, definition, records = [
   onOpenChange: (open: boolean) => void
   onSubmit: (action: string, input: Record<string, unknown>) => void
 }) {
+  const members = useAssignmentMembers()
   const [validationError, setValidationError] = useState('')
   const [choices, setChoices] = useState<Record<string, string>>({})
-  useEffect(() => { setChoices({}); setValidationError('') }, [actionName, open])
   const action = definition.actions.find(item => item.name === actionName)
+  const initial = (key: string) => {
+    const target = Object.entries(action?.effects ?? {}).find(([field, mapping]) => mapping === `$input.${key}` && definition.entity.fields[field])?.[0]
+    if (target && definition.entity.fields[target].editable) return record?.data[target]
+    // Outcome dates stamp when the action happens; the person can still change it.
+    if (target && action?.input[key]?.format === 'date' && !action.input[key].default) return new Date().toLocaleDateString('en-CA')
+    return action?.input[key]?.default
+  }
+  useEffect(() => {
+    setChoices(Object.fromEntries(Object.keys(action?.input ?? {}).flatMap(key => initial(key) === undefined ? [] : [[key, String(initial(key))]])))
+    setValidationError('')
+  }, [actionName, open, record?.id])
   if (!action || !record) return null
+  const formData = actionFormData(action, record.data, choices)
   const preview = actionPreview(definition, record, action.name, role)
+  const unmet = preview?.checks.filter(check => !check.passed && check.id !== 'permission' && check.id !== 'state') ?? []
+  const blockedDirect = !previewOnly && action.humanExecution === 'direct' && unmet.length > 0
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={action.label} description={`${String(record.data.title)}${record.data.amountCents !== undefined ? ` · ${money(record.data.amountCents)}` : ''}. ${action.description}`}>
       <Form onSubmit={event => {
@@ -156,47 +182,55 @@ export function ActionDialog({ open, actionName, record, definition, records = [
         const values = new FormData(event.currentTarget)
         const input: Record<string, unknown> = {}
         for (const [key, field] of Object.entries(action.input)) {
-          const raw = choices[key] ?? String(values.get(key) ?? '')
+          const raw = field.reference || field.format === 'user' || field.type === 'enum' || field.type === 'boolean' ? choices[key] ?? '' : String(values.get(key) ?? '')
           if (raw === '' && !field.required) continue
           if (raw === '' && field.type === 'boolean') { input[key] = undefined; continue }
-          input[key] = field.type === 'integer' ? Number(raw) : field.type === 'boolean' ? raw === 'true' : raw
+          input[key] = field.type === 'integer' ? (key === 'amountCents' ? Math.round(Number(raw) * 100) : Number(raw)) : field.type === 'boolean' ? raw === 'true' : raw
         }
         try {
           setValidationError('')
-          validateFields(action.input, input)
+          const valid = validateFields(action.input, input)
+          if (!previewOnly) validateRelationshipSelections(definition.entity.fields, actionFormData(action, record.data, valid), records)
           onSubmit(action.name, input)
         } catch (caught) { setValidationError(caught instanceof Error ? caught.message : 'Check the action input.') }
       }}>
         <FieldGroup>
           {validationError || error ? <Alert variant="danger">{validationError || error}</Alert> : null}
-          {preview && !preview.allowed
+          {blockedDirect
+            ? <Alert variant="warning"><strong>Complete these first:</strong><ul className="builder-assumptions">{unmet.map(check => <li key={check.id}>{check.label}</li>)}</ul>Use Edit to fill in the missing details.</Alert>
+            : preview && !preview.allowed
             ? <Alert variant="warning">{previewOnly ? 'This example action will be blocked by the rules below.' : 'This will be blocked. Staging still records the failed checks.'}</Alert>
-            : <Alert>{previewOnly ? 'Test the rules on this example record. No live data will change.' : 'This creates a proposal. Review its changes before applying it.'}</Alert>}
+            : <Alert>{previewOnly ? 'Test the rules on this example record. No live data will change.' : action.humanExecution === 'direct' ? 'Saving applies this change immediately and records it in activity.' : 'This creates a proposal. Review its changes before applying it.'}</Alert>}
           {Object.entries(action.input).map(([key, field]) => {
-            if (field.reference || field.type === 'enum' || field.type === 'boolean') {
-              const options = field.reference ? records.filter(r => r.capability === field.reference).map(r => ({ value: r.id, label: String(r.data.title) })) : field.type === 'boolean' ? [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] : (field.options ?? []).map(value => ({ value, label: value }))
+            if (field.reference) {
+              const targets = actionReferenceFields(definition, action, key)
+              const selection = relationshipSelection(field, targets.length ? targets : [field], definition.entity.fields, formData, records, choices[key] ?? '')
+              return <Select key={key} label={field.label} value={choices[key] ?? ''} onChange={value => { setChoices(current => ({ ...current, [key]: value })); setValidationError('') }} {...selection} />
+            }
+            if (field.reference || field.format === 'user' || field.type === 'enum' || field.type === 'boolean') {
+              const options = field.format === 'user' ? members.map(member => ({ value: member.id, label: member.name })) : field.reference ? records.filter(r => r.capability === field.reference).map(r => ({ value: r.id, label: String(r.data.title) })) : field.type === 'boolean' ? [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] : (field.options ?? []).map(value => ({ value, label: value }))
               return <Select key={key} label={field.label} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={[{ value: '', label: 'Choose a value' }, ...options]} />
             }
-            const current = record.data[key]
+            const current = initial(key)
             if (field.type === 'integer') {
               return (
-                <Field key={key} name={key} type="number" isRequired={field.required} defaultValue={typeof current === 'number' ? String(current) : undefined}>
-                  <FieldLabel>{fieldLabel(key, field.label)}</FieldLabel>
-                  <Input min={field.min} max={field.max} />
+                <Field key={key} name={key} type="number" isRequired={field.required} defaultValue={typeof current === 'number' ? String(key === 'amountCents' ? current / 100 : current) : undefined}>
+                  <FieldLabel>{key === 'amountCents' ? 'Amount (USD)' : field.label}</FieldLabel>
+                  <Input step={key === 'amountCents' ? 0.01 : 1} min={key === 'amountCents' && field.min !== undefined ? field.min / 100 : field.min} max={key === 'amountCents' && field.max !== undefined ? field.max / 100 : field.max} />
                   <FieldError />
                 </Field>
               )
             }
             const long = field.type === 'string' && (field.max ?? 0) > 200
             return (
-              <Field key={key} name={key} isRequired={field.required} minLength={field.min} maxLength={field.max} defaultValue={typeof current === 'string' ? current : undefined}>
+              <Field key={key} name={key} isRequired={field.required && field.default !== ''} minLength={field.min} maxLength={field.max} defaultValue={typeof current === 'string' ? current : undefined}>
                 <FieldLabel>{field.label}</FieldLabel>
-                {long ? <Textarea /> : <Input />}
+                {long ? <Textarea /> : <Input type={field.format === 'date' ? 'date' : undefined} />}
                 <FieldError />
               </Field>
             )
           })}
-          <Button type="submit" disabled={busy}>{busy ? <Spinner data-icon="inline-start" /> : null}{previewOnly ? 'Test action' : 'Create proposal'}</Button>
+          <Button type="submit" disabled={busy || blockedDirect}>{busy ? <Spinner data-icon="inline-start" /> : null}{previewOnly ? 'Test action' : action.humanExecution === 'direct' ? 'Save changes' : 'Create proposal'}</Button>
         </FieldGroup>
       </Form>
     </Dialog>
@@ -204,6 +238,7 @@ export function ActionDialog({ open, actionName, record, definition, records = [
 }
 
 export function RecordFields({ definition, data, records = [], showEmpty = false }: { definition: Definition; data: RecordData; records?: BusinessRecord[]; showEmpty?: boolean }) {
+  const members = useAssignmentMembers()
   return (
     <dl className="kv">
       {Object.entries(definition.entity.fields).map(([key, field]) => {
@@ -215,9 +250,9 @@ export function RecordFields({ definition, data, records = [], showEmpty = false
           <Fragment key={key}>
             <dt>{fieldLabel(key, field.label)}</dt>
             <dd>
-              {value === undefined || value === '' ? 'Not set' : field.reference ? String(records.find(r => r.id === value)?.data.title ?? value)
+              {value === undefined || value === '' ? 'Not set' : field.format === 'user' ? memberLabel(members, value) : field.reference ? String(records.find(r => r.id === value)?.data.title ?? value)
                 : key === 'amountCents' ? money(value)
-                : key === 'confidence' ? `${value}%`
+                : key === 'confidence' || field.format === 'percent' ? `${value}%`
                 : key === 'status' ? <Badge variant={statusVariant(String(value))}>{statusLabel(String(value))}</Badge>
                 : key === 'supplierVerified' ? (value ? 'Verified' : 'Unverified')
                 : field.type === 'boolean' ? (value ? 'Yes' : 'No')

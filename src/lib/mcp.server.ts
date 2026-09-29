@@ -8,6 +8,10 @@ import type { AgentAccess } from '../kernel/agent-access.server'
 import { Kernel, KernelError } from '../kernel/engine.server'
 import { CREATE_ACTION, createProposalSchema, recordQuerySchema } from '../kernel/record-operations'
 import { applicationContract } from '../kernel/application-contract'
+import { InputError } from '../kernel/errors'
+import { authUrl } from './env.server'
+import { readBoundedText } from './request-body.server'
+import { isWriteConflict, serverErrorDetails, writeConflictMessage } from './server-error'
 
 const saveDraftArgs = z.object({
   brief: z.string().trim().min(10).max(4000),
@@ -22,7 +26,7 @@ const draftIdArgs = z.object({ id: z.string().min(1) }).strict()
 const publishArgs = z.object({ id: z.string().min(1), expectedVersion: z.number().int().positive(), previewToken: z.string().min(1).optional() }).strict()
 const previewArgs = z.object({ id: z.string().min(1), expectedVersion: z.number().int().positive() }).strict()
 const editArgs = z.object({ project: z.string().min(1) }).strict()
-const constructInstructions = 'Kernel creates applications from catalog patterns, assemblies or validated custom definitions. Discover list_patterns and list_modules for reusable starting points. When the catalog does not fit, call get_application_contract for the schema, semantic rules and limits before authoring a definition. Call save_draft with exactly one of pattern, assembly or definition, then publish_draft. Use list_blocks and list_grammars for supported presentation. Do not invent unwired blocks, integrations, autonomous execution, SQL, date fields or currency conversion. For a new application, omit previewToken. To change a published application, call edit_project, save_draft with id and expectedVersion, preview_migration, then publish_draft with that token. Publishing does not install sample records. This credential cannot read business records, stage or apply record changes.'
+const constructInstructions = 'Kernel creates applications from catalog patterns, assemblies or validated custom definitions. Discover list_patterns and list_modules for reusable starting points. When the catalog does not fit, call get_application_contract for the schema, semantic rules and limits before authoring a definition. Call save_draft with exactly one of pattern, assembly or definition, then publish_draft. Use list_blocks and list_grammars for supported presentation. Do not invent unwired blocks, integrations, autonomous execution, SQL or currency conversion. Calendar dates use string fields with format: date. For a new application, omit previewToken. To change a published application, call edit_project, save_draft with id and expectedVersion, preview_migration, then publish_draft with that token. Publishing does not install sample records. This credential cannot read business records, stage or apply record changes.'
 
 const constructTools = [
   { name: 'get_application_contract', title: 'Discover the application definition contract', description: 'Read the versioned JSON Schema, semantic validation rules, limits and publication workflow before authoring a custom application definition. Schema validation alone is not sufficient; the kernel also checks semantic rules.', inputSchema: { type: 'object' as const, additionalProperties: false, properties: {} }, annotations: { readOnlyHint: true, openWorldHint: false } },
@@ -45,24 +49,12 @@ const result = (value: Record<string, unknown>, isError = false) => ({ content: 
 const fail = (status: number, message: string) => Response.json({ jsonrpc: '2.0', id: null, error: { code: status === 400 ? -32700 : -32000, message } }, { status, headers: { 'Cache-Control': 'no-store', ...(status === 401 ? { 'WWW-Authenticate': 'Bearer' } : {}) } })
 
 async function readBody(request: Request) {
-  const reader = request.body?.getReader()
-  if (!reader) throw new KernelError('INVALID_INPUT', 'A JSON-RPC request body is required.')
-  let size = 0
-  const chunks: Uint8Array[] = []
-  try {
-    while (true) {
-      const next = await reader.read()
-      if (next.done) break
-      size += next.value.byteLength
-      if (size > 128000) { await reader.cancel(); throw new KernelError('TOO_LARGE', 'Request exceeds the size limit.', 413) }
-      chunks.push(next.value)
-    }
-  } finally { reader.releaseLock() }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  if (!request.body) throw new KernelError('INVALID_INPUT', 'A JSON-RPC request body is required.')
+  return JSON.parse(await readBoundedText(request))
 }
 
 /** A fresh transport and identity per HTTP request; no reusable authentication session. */
-export async function handleMcp(request: Request, access: AgentAccess, kernel: Kernel, configuredOrigin = process.env.BETTER_AUTH_URL || 'http://localhost:3000') {
+export async function handleMcp(request: Request, access: AgentAccess, kernel: Kernel, configuredOrigin = authUrl()) {
   let server: Server | undefined
   try {
     const allowed = new URL(configuredOrigin)
@@ -149,6 +141,9 @@ export async function handleMcp(request: Request, access: AgentAccess, kernel: K
       } catch (error) {
         if (error instanceof KernelError) return result({ code: error.code, error: error.message }, true)
         if (error instanceof z.ZodError) return result({ code: 'INVALID_INPUT', error: 'Correct the listed input issues and retry.', issues: error.issues.slice(0, 20).map(issue => ({ path: issue.path, code: issue.code, message: issue.message })) }, true)
+        if (error instanceof InputError) return result({ code: 'INVALID_INPUT', error: error.message }, true)
+        if (isWriteConflict(error)) return result({ code: 'CONFLICT', error: writeConflictMessage }, true)
+        console.error('MCP tool failed', serverErrorDetails(error))
         return result({ code: 'INTERNAL_ERROR', error: 'The tool could not complete.' }, true)
       }
     })

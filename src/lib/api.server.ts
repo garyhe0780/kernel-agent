@@ -1,3 +1,4 @@
+import { isWriteConflict, serverErrorDetails, writeConflictMessage } from './server-error'
 import { EmbeddedAgent } from '../kernel/embedded-agent.server'
 import { embeddedOperationSchema } from '../kernel/embedded-agent'
 import { agentRunSchema, agentRunCommandSchema } from '../kernel/agent-runs'
@@ -15,7 +16,9 @@ import { KernelError } from '../kernel/engine.server'
 import { createProposalSchema } from '../kernel/record-operations'
 import { purchasingAssembly } from '../kernel/application'
 import { clarifyApplication, modelStatus, modelSettings, testModelConnection, planApplication } from '../kernel/model.server'
-import { authUrl } from './env.server'
+import { trustedOrigins } from './env.server'
+import { readBoundedText } from './request-body.server'
+import { InputError } from '../kernel/errors'
 import type { Principal } from '../kernel/definition'
 
 const commandSchema = z.discriminatedUnion('type', [
@@ -48,6 +51,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('save_draft'), id: z.string().optional(), expectedVersion: z.number().int().positive().optional(), brief: z.string().max(4000), definition: z.unknown().optional(), assembly: z.unknown().optional(), pattern: z.string().min(1).max(80).optional() }).strict(),
   z.object({ type: z.literal('publish_draft'), id: z.string(), expectedVersion: z.number().int().positive(), previewToken: z.string().optional() }).strict(),
   embeddedOperationSchema.extend({ type: z.literal('operate') }),
+  z.object({ type: z.literal('act'), recordId: z.string().min(1), action: z.string().min(1), input: z.record(z.string(), z.unknown()), expectedVersion: z.number().int().positive(), definitionVersion: z.number().int().positive() }).strict(),
   z.object({ type: z.literal('create'), capability: z.string().min(1), data: z.record(z.string(), z.unknown()) }).strict(),
   z.object({ type: z.literal('stage'), recordId: z.string().min(1), action: z.string().min(1), input: z.record(z.string(), z.unknown()).default({}), idempotencyKey: z.string().min(8).max(100) }).strict(),
   z.object({ type: z.literal('review'), changeId: z.string().min(1), decision: z.enum(['apply', 'reject']) }).strict(),
@@ -70,8 +74,7 @@ async function principal(request: Request, kind: Principal['kind']) {
 
 function checkOrigin(request: Request) {
   const origin = request.headers.get('origin')
-  const allowed = new Set([authUrl(), 'http://localhost:3000', 'http://127.0.0.1:3000'])
-  if (!origin || !allowed.has(origin)) throw new KernelError('INVALID_ORIGIN', 'This write must originate from your workspace origin.', 403)
+  if (!origin || !trustedOrigins().includes(origin)) throw new KernelError('INVALID_ORIGIN', 'This write must originate from your workspace origin.', 403)
 }
 
 function response(data: unknown, status = 200) {
@@ -116,12 +119,16 @@ export async function handleKernel(request: Request, agent = false) {
       if (!agent && new URL(request.url).searchParams.has('drafts')) return response({ drafts: await kernel.listDrafts(p), model: modelStatus() })
       if (!agent && new URL(request.url).searchParams.has('history')) return response(await kernel.projectHistory(p, new URL(request.url).searchParams.get('history')!))
       const project = new URL(request.url).searchParams.get('project') ?? undefined
-      const state = await kernel.snapshot(p, project)
+      const limits = Object.fromEntries(query.getAll('expand').flatMap(entry => {
+        const split = entry.lastIndexOf(':')
+        const count = Number(entry.slice(split + 1))
+        return split > 0 && Number.isSafeInteger(count) && count > 0 ? [[entry.slice(0, split), count]] : []
+      }))
+      const state = await kernel.snapshot(p, project, limits)
       return response(agent ? { tools: state.tools, records: state.records, capabilities: state.capabilities.map(cap => ({ slug: cap.slug, version: cap.version })), project: state.project?.slug, mode: 'Authenticated tools; proposals require human review.' } : { ...state, model: { configured: modelStatus().configured } })
     }
     checkOrigin(request)
-    const text = await request.text()
-    if (text.length > 128000) throw new KernelError('TOO_LARGE', 'Request exceeds the size limit.', 413)
+    const text = await readBoundedText(request)
     const command = commandSchema.parse(JSON.parse(text))
     if (command.type === 'accept_application_invite') {
       const session = await auth.api.getSession({ headers: request.headers })
@@ -180,6 +187,7 @@ export async function handleKernel(request: Request, agent = false) {
         const { type: _type, ...input } = command
         return response(await new EmbeddedAgent(db, kernel, agentAccess).operate(p, input))
       }
+      case 'act': return response(await kernel.act(p, command))
       case 'create': return response(await kernel.createRecord(p, command.data, command.capability))
       case 'start_run': { const { type: _type, ...input } = command; return response(await kernel.startAgentRun(p, input)) }
       case 'manage_run': { const { type: _type, ...input } = command; return response(await kernel.agentRun(p, input)) }
@@ -192,8 +200,9 @@ export async function handleKernel(request: Request, agent = false) {
   } catch (error) {
     if (error instanceof KernelError) return response({ error: error.message, code: error.code }, error.status)
     if (error instanceof z.ZodError || error instanceof SyntaxError) return response({ error: 'Invalid input. Check the required fields.', code: 'INVALID_INPUT' }, 400)
-    if (error instanceof Error && !error.name.startsWith('Prisma') && !('code' in error)) return response({ error: error.message, code: 'INVALID_INPUT' }, 400)
-    console.error('Kernel request failed', error instanceof Error ? error.name : 'Unknown error')
+    if (error instanceof InputError) return response({ error: error.message, code: 'INVALID_INPUT' }, 400)
+    if (isWriteConflict(error)) return response({ error: writeConflictMessage, code: 'CONFLICT' }, 409)
+    console.error('Kernel request failed', serverErrorDetails(error))
     return response({ error: 'The operation could not complete. Refresh and try again.', code: 'INTERNAL_ERROR' }, 500)
   }
 }

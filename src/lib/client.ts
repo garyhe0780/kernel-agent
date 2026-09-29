@@ -2,12 +2,14 @@ import { workspaceHeaders } from './workspace-selection'
 import type { Check, Definition, Principal, RecordData } from '@/kernel/definition'
 import type { Package, PublicBlock } from '@/kernel/packages'
 import type { ProjectSnapshot } from '@/kernel/projects'
+import type { RecordPageInfo } from '@/kernel/record-operations'
 
 export type BusinessRecord = { id: string; capability: string; entity: string; data: RecordData; version: number; createdAt: string; updatedAt: string }
 export type CapabilitySnapshot = { slug: string; version: number; definition: Definition }
 export type Proposal = { executionMode?: 'review' | 'automatic'; kind?: 'action' | 'create'; id: string; capability: string; action: string; recordId: string; recordVersion: number; definitionVersion: number; before: RecordData; after: RecordData; checks: Check[]; status: string; actorKind: string; createdAt: string; proposerName?: string; input?: RecordData }
 export type { ProjectSnapshot }
 export type Snapshot = {
+  members?: { id: string; name: string }[]
   model?: { configured: boolean }
   workspace: { id: string; name: string }
   principal: Principal
@@ -17,6 +19,7 @@ export type Snapshot = {
   capabilities: CapabilitySnapshot[]
   catalog: Package[]
   records: BusinessRecord[]
+  recordPages?: Record<string, RecordPageInfo>
   changes: Proposal[]
   executions: { id: string; action: string; outcome: string; actorName: string; actorKind: string; details: Record<string, unknown>; createdAt: string; recordId?: string | null }[]
   tools: unknown[]

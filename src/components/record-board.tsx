@@ -1,5 +1,6 @@
+import { useAssignmentMembers, memberLabel } from './record-context'
 import type { Definition, RecordData } from '@/kernel/definition'
-import { shortId } from '@/lib/client'
+import { money, shortId } from '@/lib/client'
 import { statusLabel } from '@/lib/project-ui'
 
 function plural(label: string) {
@@ -8,29 +9,34 @@ function plural(label: string) {
 }
 
 export function RecordBoard({
+  columns,
   definition,
   records,
   selectedId,
   related,
   onSelect,
 }: {
+  columns?: string[]
   definition: Definition
   records: { id: string; data: RecordData }[]
   selectedId?: string
   related: { id: string; data: RecordData }[]
   onSelect: (id: string) => void
 }) {
+  const members = useAssignmentMembers()
   const statuses = definition.entity.fields.status?.options ?? []
   const noun = definition.entity.label.toLowerCase()
+  const amountKey = (columns ?? []).find(key => key.endsWith('Cents') && definition.entity.fields[key]?.type === 'integer')
   return (
     <div className="record-board" role="region" aria-label={`${plural(definition.entity.label)} board`}>
       {statuses.map(value => {
         const column = records.filter(record => record.data.status === value)
+        const total = amountKey ? column.reduce((sum, record) => sum + (typeof record.data[amountKey] === 'number' ? record.data[amountKey] as number : 0), 0) : 0
         return (
           <section className="record-board-column" key={value} aria-label={statusLabel(value)}>
             <header>
               <h3>{statusLabel(value)}</h3>
-              <span>{column.length}</span>
+              <span>{column.length}{amountKey && column.length ? ` · ${money(total)}` : ''}</span>
             </header>
             {column.length === 0 ? <p className="muted">No {plural(noun)}.</p> : column.map(record => (
               <button
@@ -48,6 +54,12 @@ export function RecordBoard({
                     return title ? `${field.label} · ${String(title)}` : null
                   }).filter(Boolean).join(' · ') || `#${shortId(record.id)}`}
                 </span>
+                {(columns ?? []).filter(key => key !== 'title' && key !== 'status' && !definition.entity.fields[key]?.reference).map(key => {
+                  const field = definition.entity.fields[key]
+                  const value = record.data[key]
+                  if (!field || value === undefined || value === '') return null
+                  return <span key={key}>{key.endsWith('Cents') ? 'Amount (USD)' : field.label}: {key.endsWith('Cents') && typeof value === 'number' ? money(value) : field.format === 'user' ? memberLabel(members, value) : field.format === 'percent' ? `${value}%` : String(value)}</span>
+                })}
               </button>
             ))}
           </section>

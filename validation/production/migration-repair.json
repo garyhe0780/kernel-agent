@@ -1,0 +1,11 @@
+{
+  "status": "committed",
+  "applied": [
+    "202609230001_application_membership",
+    "202609270001_creation_proposals",
+    "202609270002_agent_execution_policy",
+    "202609270003_agent_runs",
+    "202609270004_embedded_operations",
+    "202609280001_agent_limits"
+  ]
+}

@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { createProposalSchema, recordQuerySchema } from '../kernel/record-operations'
 import type { AgentAccess } from '../kernel/agent-access.server'
 import { Kernel, KernelError } from '../kernel/engine.server'
+import { InputError } from '../kernel/errors'
+import { readBoundedText } from './request-body.server'
+import { isWriteConflict, serverErrorDetails, writeConflictMessage } from './server-error'
 
 const stage = z.object({ type: z.literal('stage'), recordId: z.string().min(1), action: z.string().min(1), input: z.record(z.string(), z.unknown()).default({}), idempotencyKey: z.string().min(8).max(100) }).strict()
 const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store', ...(status === 401 ? { 'WWW-Authenticate': 'Bearer' } : {}) } })
@@ -21,8 +24,7 @@ export async function handleAgentCredential(request: Request, access: AgentAcces
       return reply(await kernel.agentSnapshot(p, cursor))
     }
     if (request.method !== 'POST') return reply({ code: 'METHOD_NOT_ALLOWED', error: 'Use GET or POST.' }, 405)
-    const body = await request.text()
-    if (body.length > 128000) throw new KernelError('TOO_LARGE', 'Request exceeds the size limit.', 413)
+    const body = await readBoundedText(request)
     const raw = JSON.parse(body)
     if (raw?.type === 'start_run' || raw?.type === 'manage_run') {
       const { type, ...command } = raw
@@ -45,6 +47,9 @@ export async function handleAgentCredential(request: Request, access: AgentAcces
   } catch (error) {
     if (error instanceof KernelError) return reply({ error: error.message, code: error.code }, error.status)
     if (error instanceof z.ZodError || error instanceof SyntaxError) return reply({ error: 'Invalid request. Check the action contract and required fields.', code: 'INVALID_INPUT' }, 400)
+    if (error instanceof InputError) return reply({ error: error.message, code: 'INVALID_INPUT' }, 400)
+    if (isWriteConflict(error)) return reply({ error: writeConflictMessage, code: 'CONFLICT' }, 409)
+    console.error('Agent request failed', serverErrorDetails(error))
     return reply({ error: 'The operation could not complete.', code: 'INTERNAL_ERROR' }, 500)
   }
 }

@@ -1,3 +1,4 @@
+import { AssignmentMembers, useViewClock } from './record-context'
 import { ApplicationInvite } from './application-invite'
 import { WorkspaceSwitcher } from './workspace-switcher'
 import { clearWorkspaceSelection } from '@/lib/workspace-selection'
@@ -5,7 +6,7 @@ import { matchesView } from '@/kernel/application-views'
 import { useEffect, useState, type ReactNode, type ComponentType } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Dialog, DialogTrigger, Popover } from 'react-aria-components'
-import { ClipboardCheck, ClipboardList, Contact, FolderKanban, Headphones, Laptop, Newspaper, Receipt, Users, LogOut, Settings2, SquareArrowOutUpRight, ChevronsUpDown, Layers3, LayoutGrid, Menu, X, Table2, Inbox, ArrowLeft, House, History, Bot, Plus, Star, Ellipsis, Boxes } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, Contact, FolderKanban, Headphones, Laptop, Newspaper, Receipt, Users, LogOut, Settings2, SquareArrowOutUpRight, ChevronsUpDown, Layers3, LayoutGrid, Menu, X, Table2, Inbox, House, History, Bot, Plus, Star, Ellipsis, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/surfaces'
 import { authClient } from '@/lib/auth-client'
@@ -77,6 +78,7 @@ export function ProjectFrame({
   const applicationUser = snapshot.principal.role === 'application'
   const roleLabel = applicationUser ? 'Member' : snapshot.principal.role
   const [navOpen, setNavOpen] = useState(false)
+  const now = useViewClock()
   const favoriteKey = `kernel:favorites:${snapshot.principal.userId}:${snapshot.workspace.id}`
   const [favorites, setFavorites] = useState<string[]>([])
   const [favoriteSearch, setFavoriteSearch] = useState('')
@@ -100,6 +102,12 @@ export function ProjectFrame({
   const reviewEntity = snapshot.capabilities.find(cap => cap.slug === activeEntity)?.definition.entity.label.toLowerCase() ?? 'record'
   const navigation = snapshot.project?.presentation?.navigation ?? snapshot.capabilities.map(cap => ({ entity: cap.slug, label: cap.definition.entity.label.endsWith('s') ? cap.definition.entity.label : `${cap.definition.entity.label}s` }))
   const reviewLabel = `Review ${reviewEntity.endsWith('s') ? reviewEntity : `${reviewEntity}s`}`
+  const currentLocation = headerLocation ?? (workspace
+    ? workspacePage.charAt(0).toUpperCase() + workspacePage.slice(1)
+    : configure ? `${name} · Configure`
+    : reviewing ? reviewLabel
+    : activeView ? snapshot.project?.presentation?.views.find(view => view.id === activeView)?.name ?? name
+    : navigation.find(item => item.entity === activeEntity)?.label ?? name)
   return (
     <div className="app app-desk"><a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="desk-topbar">
@@ -118,13 +126,12 @@ export function ProjectFrame({
           </Popover>
         </DialogTrigger>}
         </div>
-        <div className="desk-header-context">{applicationUser ? null : <><WorkspaceSwitcher workspace={snapshot.workspace} /><span className="desk-header-separator" aria-hidden="true">/</span></>}<span className="desk-header-location">{headerLocation ?? (workspace ? workspacePage.charAt(0).toUpperCase() + workspacePage.slice(1) : configure ? `${name} · Configure` : name)}</span></div>
+        <div className="desk-header-context">{applicationUser ? null : <><WorkspaceSwitcher workspace={snapshot.workspace} /><span className="desk-header-separator" aria-hidden="true">/</span></>}<span className="desk-header-location" title={currentLocation}>{currentLocation}</span></div>
         <Button variant="ghost" size="icon" className="desk-navigation-toggle" aria-label={navOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={navOpen} aria-controls="application-navigation" onPress={() => setNavOpen(!navOpen)}>{navOpen ? <X /> : <Menu />}</Button>
       </header>
       <aside id="application-navigation" className="nav desk-nav" data-open={navOpen}>
         <div className="desk-nav-scroll">
         {settingsNavigation ? settingsNavigation(() => setNavOpen(false)) : <>
-        {!workspace && owner ? <Link to="/workspace" className="nav-item desk-back-link" onClick={() => setNavOpen(false)}><ArrowLeft /><span>Back to workspace</span></Link> : null}
         <nav className="nav-list" aria-label={workspace ? 'Workspace navigation' : `${name} navigation`}>
           {workspace ? <>
             <Link to="/workspace" className="nav-item" activeOptions={{ exact: true }} aria-current={workspacePage === 'overview' ? 'page' : undefined} onClick={() => setNavOpen(false)}><House /><span>Overview</span></Link>
@@ -151,7 +158,19 @@ export function ProjectFrame({
                 </Popover>
               </DialogTrigger> : null}
             </div>{favoritesReady && !snapshot.projects.some(project => favorites.includes(project.slug)) ? <p className="favorites-hint">Pin an application to keep it here.</p> : null}</section> : null}
-          </> : onEntityChange ? navigation.map(item => <div key={item.entity} className="desk-nav-section"><Button variant="ghost" className="nav-item" aria-current={!reviewing && !activeView && activeEntity === item.entity ? 'page' : undefined} onPress={() => { onEntityChange(item.entity); setNavOpen(false) }}><Table2 data-icon="inline-start" /><span>{item.label}</span><span className="nav-count">{snapshot.records.filter(r => r.capability === item.entity).length}</span></Button>{onViewChange ? snapshot.project?.presentation?.views.filter(view => view.entity === item.entity).map(view => <Button key={view.id} variant="ghost" className="nav-item desk-saved-view" aria-current={activeView === view.id ? 'page' : undefined} onPress={() => { onViewChange(view.id); setNavOpen(false) }}><span>{view.name}</span><span className="nav-count">{snapshot.records.filter(r => r.capability === view.entity && matchesView(r.data, view)).length}</span></Button>) : null}</div>) : <Link to="/p/$projectSlug" params={{ projectSlug: slug }} className="nav-item" aria-current={!configure ? 'page' : undefined}><Table2 /><span>{snapshot.project?.shell === 'site' ? 'Content' : snapshot.capability.definition.entity.label.endsWith('s') ? snapshot.capability.definition.entity.label : `${snapshot.capability.definition.entity.label}s`}</span></Link>}
+          </> : onEntityChange ? navigation.map(item => {
+            const page = snapshot.recordPages?.[item.entity]
+            const recordCount = page?.total ?? snapshot.records.filter(record => record.capability === item.entity).length
+            const partial = Boolean(page && page.total > page.loaded)
+            const views = snapshot.project?.presentation?.views.filter(view => view.entity === item.entity) ?? []
+            return <div key={item.entity} className="desk-nav-section">
+              <Button variant="ghost" className="nav-item" aria-current={!reviewing && !activeView && activeEntity === item.entity ? 'page' : undefined} onPress={() => { onEntityChange(item.entity); setNavOpen(false) }}><Table2 data-icon="inline-start" /><span>{item.label}</span><span className="nav-count" data-empty={recordCount === 0}>{recordCount}</span></Button>
+              {onViewChange && views.length > 0 ? <div className="desk-view-list" role="group" aria-label={`${item.label} views`}>{views.map(view => {
+                const viewCount = snapshot.records.filter(record => record.capability === view.entity && matchesView(record.data, view, { userId: snapshot.principal.userId, now, updatedAt: record.updatedAt })).length
+                return <Button key={view.id} variant="ghost" className="nav-item desk-saved-view" aria-current={activeView === view.id ? 'page' : undefined} onPress={() => { onViewChange(view.id); setNavOpen(false) }}><span>{view.name}</span><span className="nav-count" data-empty={viewCount === 0 && !partial} title={partial ? 'Counted from loaded records' : undefined}>{viewCount}{partial ? '+' : ''}</span></Button>
+              })}</div> : null}
+            </div>
+          }) : <Link to="/p/$projectSlug" params={{ projectSlug: slug }} className="nav-item" aria-current={!configure ? 'page' : undefined}><Table2 /><span>{snapshot.project?.shell === 'site' ? 'Content' : snapshot.capability.definition.entity.label.endsWith('s') ? snapshot.capability.definition.entity.label : `${snapshot.capability.definition.entity.label}s`}</span></Link>}
           {onReview ? <Button variant="ghost" className="nav-item" aria-current={reviewing ? 'page' : undefined} onPress={() => { onReview(); setNavOpen(false) }}><Inbox data-icon="inline-start" /><span>{reviewLabel}</span><span className="nav-count">{pending}</span></Button> : null}
           {liveHref ? <a className="nav-item" href={liveHref}><SquareArrowOutUpRight />View live</a> : null}
         </nav>
@@ -165,7 +184,7 @@ export function ProjectFrame({
           <Link className="desk-powered" to="/" onClick={() => setNavOpen(false)}>Built with <strong>kernel.</strong></Link>
         </div>
       </aside>
-      {children}
+      <AssignmentMembers.Provider value={snapshot.members ?? []}>{children}</AssignmentMembers.Provider>
     </div>
   )
 }

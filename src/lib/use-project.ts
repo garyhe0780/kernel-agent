@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { authClient } from '@/lib/auth-client'
 import { request, type Snapshot } from '@/lib/client'
+import { snapshotRecordLimits } from '@/kernel/record-operations'
 
 export function useProject(projectSlug: string) {
   const session = authClient.useSession()
@@ -9,21 +10,35 @@ export function useProject(projectSlug: string) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const keys = useRef(new Map<string, string>())
+  const limits = useRef<Record<string, number>>({})
+
+  const path = () => `/api/kernel?${new URLSearchParams([['project', projectSlug], ...Object.entries(limits.current).map(([slug, count]) => ['expand', `${slug}:${count}`])])}`
 
   async function refresh() {
-    const next = await request<Snapshot>(`/api/kernel?project=${encodeURIComponent(projectSlug)}`)
+    const next = await request<Snapshot>(path())
     setSnapshot(next)
     return next
   }
 
+  async function loadMore(capability: string) {
+    const page = snapshot?.recordPages?.[capability]
+    if (!page || page.loaded >= page.total) return
+    limits.current = { ...limits.current, [capability]: Math.min(snapshotRecordLimits.max, page.loaded + snapshotRecordLimits.page) }
+    setBusy(true)
+    try { await refresh() }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load more records.') }
+    finally { setBusy(false) }
+  }
+
   useEffect(() => {
+    limits.current = {}
     if (!session.data) {
       setSnapshot(null)
       return
     }
     let cancelled = false
     setError('')
-    request<Snapshot>(`/api/kernel?project=${encodeURIComponent(projectSlug)}`)
+    request<Snapshot>(path())
       .then(next => { if (!cancelled) setSnapshot(next) })
       .catch(caught => { if (!cancelled) setError(caught instanceof Error ? caught.message : 'Unable to load the project.') })
     return () => { cancelled = true }
@@ -44,5 +59,5 @@ export function useProject(projectSlug: string) {
     }
   }
 
-  return { session, snapshot, error, setError, busy, run, refresh, keys }
+  return { session, snapshot, error, setError, busy, run, refresh, loadMore, keys }
 }

@@ -21,7 +21,7 @@ import { compileAssembly, sampleData, type Application, type Draft } from '@/ker
 import { assembleSelection } from '@/kernel/assembly'
 import { resolveViewGrammar } from '@/kernel/grammars'
 import type { CatalogSnapshot } from '@/kernel/modules'
-import { evaluate, validateFields } from '@/kernel/definition'
+import { evaluate, ruleSymbol, validateFields } from '@/kernel/definition'
 import { request as defaultRequest, type BusinessRecord } from '@/lib/client'
 import { ModulePicker, type ModuleSelection } from './module-picker'
 import { RecordBoard } from './record-board'
@@ -215,7 +215,7 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
           <ApplicationFieldEditor key={entity.slug} application={definition} entitySlug={entity.slug} disabled={Boolean(busy) || Boolean(clarification) || hasPendingRequest} onChange={setDefinition} />
           <dl className="kv">{Object.entries(entity.entity.fields).map(([key, field]) => <div className="builder-field" key={key}><dt>{field.label}</dt><dd>{field.reference ? `Links to ${definition.entities.find(e => e.slug === field.reference)?.name}` : field.type}{field.required ? ' · required' : ''}{!field.editable ? ' · set by actions' : ''}</dd></div>)}</dl>
           <h3>Actions and rules</h3>
-          {entity.actions.map(item => <div key={item.name} className="builder-rule"><strong>{item.label}</strong><p>{item.description}</p><ul>{[...item.preconditions, ...item.policies].map(rule => <li key={rule.id}>{rule.label}: {rule.field.endsWith('Cents') ? 'Amount' : entity.entity.fields[rule.field]?.label} {rule.operator === 'lte' ? '≤' : '='} {rule.field.endsWith('Cents') ? money(rule.setting ? entity.settings[rule.setting] : rule.value) : String(rule.setting ? entity.settings[rule.setting] : rule.value)}</li>)}</ul></div>)}
+          {entity.actions.map(item => <div key={item.name} className="builder-rule"><strong>{item.label}</strong><p>{item.description}</p><ul>{[...item.preconditions, ...item.policies].map(rule => <li key={rule.id}>{rule.label}: {rule.field.endsWith('Cents') ? 'Amount' : entity.entity.fields[rule.field]?.label} {ruleSymbol(rule.operator)} {rule.operator === 'present' ? null : rule.field.endsWith('Cents') ? money(rule.setting ? entity.settings[rule.setting] : rule.value) : String(rule.setting ? entity.settings[rule.setting] : rule.value)}</li>)}</ul></div>)}
           {Object.keys(entity.settings).length ? <FieldGroup>{Object.entries(entity.settings).filter(([, value]) => typeof value === 'number').map(([key, value]) => <Field key={key} type="number" value={String(key.endsWith('Cents') ? Number(value) / 100 : value)} isDisabled={Boolean(busy)} onChange={next => setDefinition({ ...definition, entities: definition.entities.map(e => e.slug === entity.slug ? { ...e, settings: { ...e.settings, [key]: key.endsWith('Cents') ? Math.round(Number(next) * 100) : Number(next) } } : e) })}><FieldLabel>{key === 'approvalLimitCents' ? 'Approval ceiling (USD)' : key}</FieldLabel><Input step={key.endsWith('Cents') ? '0.01' : '1'} /></Field>)}</FieldGroup> : null}</div></details>}
         </div> : <div className="builder-preview builder-preview-pending">
           <h3>Application preview</h3>
@@ -228,7 +228,7 @@ export function ProjectBuilder({ draft: initial, model, onSaved, onClose, send =
         <div className="actions"><Button onPress={() => blocker.reset?.()}>Keep editing</Button><Button variant="outline" onPress={() => blocker.proceed?.()}>Leave without saving</Button></div>
       </Dialog>
       {entity ? <>
-        <CreateEntityDialog error={error} open={createOpen} definition={entity} records={samples} busy={false} onOpenChange={setCreateOpen} onCreate={data => {
+        <CreateEntityDialog error={error} open={createOpen} definition={entity} layout={definition?.layouts.find(layout => layout.entity === entity.slug)} records={samples} busy={false} onOpenChange={setCreateOpen} onCreate={data => {
           try {
             const valid = validateFields(entity.entity.fields, data, true)
             const record = { id: crypto.randomUUID(), capability: entity.slug, entity: entity.entity.name, data: valid, version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }

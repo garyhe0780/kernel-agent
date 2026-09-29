@@ -53,7 +53,7 @@ For repository callers, `selectionForModules` selects the latest requested relea
 
 An omitted assembly module version always means **release 1**, preserving the meaning of older stored assemblies. Validation normalizes it to an explicit version. It never means “latest.” New selection helpers choose latest releases and write their versions; existing patterns remain on their declared versions (1 when omitted).
 
-Adding release 2 does not change assemblies pinned to release 1. To upgrade an installed application, open a change draft, update the selected module versions and any dependent links/settings/surfaces, save, preview migration, and publish with the preview token. Existing additive migration checks still reject destructive changes, incompatible records, and stale previews. Retain every referenced old module release so drafts can be reopened.
+Adding release 2 does not change assemblies pinned to release 1. To upgrade an installed application, open a change draft, update the selected module versions and any dependent links/settings/surfaces, save, preview migration, and publish with the preview token. Migration checks still reject type changes, incompatible records and stale previews. Removed fields and entities are listed in the preview as deletions. Retain every referenced old module release so drafts can be reopened.
 
 Version numbers identify releases; they do not assert that an upgrade is safe. Assembly compatibility and live-data migration compatibility are checked separately.
 

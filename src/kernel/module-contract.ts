@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { definitionSchema } from './definition'
+import { definitionSchema, referenceMatchSchema } from './definition'
 import { savedViewSchema } from './application-views'
 import { recordLayoutSchema } from './application-layouts'
 import { workingGrammars } from './grammars'
@@ -12,6 +12,7 @@ const portSchema = z.object({
   targetVersion: z.number().int().positive().default(1),
   label: z.string().min(1),
   required: z.boolean().optional(),
+  referenceMatch: referenceMatchSchema.optional(),
 }).strict()
 
 /** Repository-authored declarative modules only. Exact versions are immutable releases. */
@@ -22,6 +23,7 @@ export const kernelModuleSchema = z.object({
   defaultAlias: identifier,
   definition: definitionSchema,
   ports: z.array(portSchema),
+  recordEditing: z.boolean().optional(),
   views: z.array(savedViewSchema.omit({ entity: true })),
   layout: recordLayoutSchema.omit({ entity: true }).optional(),
   grammar: z.enum(workingGrammars).optional(),
@@ -45,7 +47,7 @@ export function createModuleCatalog(sources: readonly unknown[]) {
     if (Object.values(mod.definition.entity.fields).some(field => field.reference)) throw new Error(`Module ${key} must declare relationships through ports.`)
     if (new Set(mod.views.map(view => view.id)).size !== mod.views.length) throw new Error(`Duplicate views on ${key}.`)
     for (const view of mod.views) {
-      if (view.columns.some(field => !fields.has(field)) || view.filters.some(filter => !fields.has(filter.field)) || (view.sort.field !== '$createdAt' && !fields.has(view.sort.field))) throw new Error(`Unknown view field on ${key}.`)
+      if (view.columns.some(field => !fields.has(field)) || view.filters.some(filter => !fields.has(filter.field) && filter.field !== '$updatedAt') || (view.sort.field !== '$createdAt' && !fields.has(view.sort.field))) throw new Error(`Unknown view field on ${key}.`)
     }
     if (mod.layout?.sections.some(section => section.fields.some(field => !fields.has(field)))) throw new Error(`Unknown layout field on ${key}.`)
   }

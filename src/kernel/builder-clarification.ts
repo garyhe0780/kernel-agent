@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { InputError } from './errors'
 
 export const clarificationSchema = z.object({
   summary: z.string().trim().min(1).max(600),
@@ -15,11 +16,11 @@ export function clarifiedBrief(brief: string, plan: BuilderClarification, answer
   const valid = clarificationSchema.parse(plan)
   const decisions = valid.questions.map(question => {
     const answer = answers[question.id]?.trim()
-    if (!answer && !useAssumptions) throw new Error('Answer each question, or choose Use suggested assumptions.')
-    if (answer && answer.length > 500) throw new Error('Keep each answer within 500 characters.')
+    if (!answer && !useAssumptions) throw new InputError('Answer each question, or choose Use suggested assumptions.')
+    if (answer && answer.length > 500) throw new InputError('Keep each answer within 500 characters.')
     return `${question.question}\n${answer ? `Answer: ${answer}` : `Suggested assumption (not confirmed): ${question.suggestedAnswer}`}`
   })
   const result = [brief.trim(), ...(decisions.length ? ['Business decisions:\n' + decisions.join('\n\n')] : [])].join('\n\n')
-  if (result.length > 4000) throw new Error('The description and answers exceed 4,000 characters. Shorten the description or answers, then try again.')
+  if (result.length > 4000) throw new InputError('The description and answers exceed 4,000 characters. Shorten the description or answers, then try again.')
   return result
 }

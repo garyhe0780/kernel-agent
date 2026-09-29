@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-09-28T06:38:49.867Z",
+  "mode": "read-only",
+  "missingTables": [],
+  "missingColumns": [],
+  "migrationHistoryPresent": true,
+  "unappliedMigrations": [],
+  "status": "expected-tables-and-columns-present",
+  "scope": "Presence of expected tables/columns and completed migration names only; types, constraints, indexes, checksums, and data compatibility require separate migration review."
+}

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "packageManager": "pnpm@9.14.2",
+  "packageManager": "pnpm@12.6.0",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 3000",
     "build": "vite build",
@@ -19,7 +19,8 @@
     "worker": "node --import tsx scripts/build-worker.ts",
     "deploy": "CLOUDFLARE=1 vite build && wrangler deploy",
     "preview:cf": "CLOUDFLARE=1 vite preview",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "accept:production": "node --import tsx scripts/accept-production.ts"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -29,19 +30,19 @@
     "@electric-sql/pglite": "^0.5.8",
     "@fontsource-variable/inter": "^5.3.0",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@prisma/adapter-pg": "6.19.0",
-    "@prisma/client": "6.19.0",
-    "@tanstack/react-router": "latest",
-    "@tanstack/react-start": "latest",
-    "better-auth": "latest",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@tanstack/react-router": "1.170.39",
+    "@tanstack/react-start": "1.168.58",
+    "better-auth": "1.7.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.2.6",
     "dotenv": "^17.4.2",
-    "lucide-react": "^1.47.0",
+    "lucide-react": "^1.48.0",
     "next-themes": "^0.4.6",
     "pg": "^8.23.0",
-    "pglite-prisma-adapter": "0.6.1",
+    "pglite-prisma-adapter": "0.7.2",
     "react": "^19.3.0",
     "react-aria-components": "^1.21.1",
     "react-dom": "^19.3.0",
@@ -53,18 +54,18 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.56.0",
+    "@cloudflare/vite-plugin": "^1.61.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.4",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "prisma": "6.19.0",
+    "prisma": "7.10.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0",
-    "wrangler": "^4.135.0"
+    "vite": "^8.3.1",
+    "wrangler": "^4.142.0"
   }
 }

@@ -1,6 +1,7 @@
 /** Closed catalog of generic blocks. Blocks take a data binding; they do not carry business meaning. */
 
 import { grammarById, type GrammarId } from './grammars'
+import { InputError } from './errors'
 
 export type BlockBinding = 'view' | 'record'
 export type SurfaceKind = GrammarId
@@ -89,10 +90,10 @@ export function blockCatalog() {
 
 export function composeSurface(grammar: GrammarId) {
   const spec = grammarById(grammar)
-  if (!spec) throw new Error(`Unknown grammar: ${grammar}.`)
+  if (!spec) throw new InputError(`Unknown grammar: ${grammar}.`)
   return spec.blocks.map(id => {
     const block = blockById(id)
-    if (!block?.wired) throw new Error(`Grammar ${grammar} cannot use unwired block ${id}.`)
+    if (!block?.wired) throw new InputError(`Grammar ${grammar} cannot use unwired block ${id}.`)
     return block
   })
 }

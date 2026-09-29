@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-28T06:21:08.999Z",
+  "origin": "https://www.fluxuslab.org",
+  "mode": "read-only",
+  "automatedStatus": "failed",
+  "acceptanceStatus": "failed",
+  "checks": [
+    {
+      "id": "public:/",
+      "status": "passed",
+      "detail": "Anonymous HTML and referenced local JS/CSS assets respond successfully."
+    },
+    {
+      "id": "public:/docs",
+      "status": "passed",
+      "detail": "Anonymous HTML and referenced local JS/CSS assets respond successfully."
+    },
+    {
+      "id": "public:/docs/quickstart",
+      "status": "passed",
+      "detail": "Anonymous HTML and referenced local JS/CSS assets respond successfully."
+    },
+    {
+      "id": "public:/docs/connect-agents",
+      "status": "passed",
+      "detail": "Anonymous HTML and referenced local JS/CSS assets respond successfully."
+    },
+    {
+      "id": "public:/docs/agent-runs",
+      "status": "passed",
+      "detail": "Anonymous HTML and referenced local JS/CSS assets respond successfully."
+    },
+    {
+      "id": "public:/login",
+      "status": "failed",
+      "detail": "Expected response was not received. Check deployment, access configuration, and server logs; no response content is included here."
+    },
+    {
+      "id": "docs:missing-guide",
+      "status": "passed",
+      "detail": "Unknown guide returns 404."
+    },
+    {
+      "id": "workspace:legacy-redirect",
+      "status": "passed",
+      "detail": "Legacy workspace link redirects within the deployment."
+    },
+    {
+      "id": "auth:anonymous-session",
+      "status": "passed",
+      "detail": "Anonymous request has no authenticated session."
+    },
+    {
+      "id": "access:/api/kernel",
+      "status": "passed",
+      "detail": "Unauthenticated access is rejected."
+    },
+    {
+      "id": "access:/api/agent",
+      "status": "passed",
+      "detail": "Unauthenticated access is rejected."
+    },
+    {
+      "id": "access:mcp",
+      "status": "failed",
+      "detail": "Expected response was not received. Check deployment, access configuration, and server logs; no response content is included here."
+    },
+    {
+      "id": "agent:discovery-and-mcp",
+      "status": "skipped",
+      "detail": "Set KERNEL_SMOKE_AGENT_TOKEN to a dedicated pilot operating credential."
+    },
+    {
+      "id": "owner:workspace-and-worker",
+      "status": "skipped",
+      "detail": "Provide a local session-cookie file and dedicated pilot workspace ID to verify authenticated access and worker health."
+    },
+    {
+      "id": "database:migration-status",
+      "status": "skipped",
+      "detail": "Requires recorded evidence in the production acceptance checklist; automated HTTP checks do not establish this result."
+    },
+    {
+      "id": "journey:crm",
+      "status": "skipped",
+      "detail": "Requires recorded evidence in the production acceptance checklist; automated HTTP checks do not establish this result."
+    },
+    {
+      "id": "journey:project-issues",
+      "status": "skipped",
+      "detail": "Requires recorded evidence in the production acceptance checklist; automated HTTP checks do not establish this result."
+    },
+    {
+      "id": "journey:review-cancel-recovery",
+      "status": "skipped",
+      "detail": "Requires recorded evidence in the production acceptance checklist; automated HTTP checks do not establish this result."
+    },
+    {
+      "id": "browser:desktop-mobile",
+      "status": "skipped",
+      "detail": "Requires recorded evidence in the production acceptance checklist; automated HTTP checks do not establish this result."
+    },
+    {
+      "id": "pilot:operator-observation",
+      "status": "skipped",
+      "detail": "Requires recorded evidence in the production acceptance checklist; automated HTTP checks do not establish this result."
+    }
+  ]
+}

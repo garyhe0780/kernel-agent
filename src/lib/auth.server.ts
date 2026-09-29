@@ -3,7 +3,8 @@ import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import type { PrismaClient } from '@prisma/client'
-import { authUrl, runtimeEnv } from './env.server'
+import { authUrl, runtimeEnv, trustedOrigins } from './env.server'
+import { sendPasswordResetEmail } from './password-reset-email.server'
 import { signupInvitationRejection } from './signup-invitation'
 
 export function createAuth(db: PrismaClient) {
@@ -15,10 +16,29 @@ export function createAuth(db: PrismaClient) {
     baseURL,
     secret,
     database: prismaAdapter(db, { provider: 'postgresql' }),
-    emailAndPassword: { enabled: true, minPasswordLength: 10 },
-    trustedOrigins: [...new Set([baseURL, 'http://localhost:3000', 'http://127.0.0.1:3000'])],
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 10,
+      resetPasswordTokenExpiresIn: 3600,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => {
+        // Keep provider failures from revealing whether an account exists.
+        try {
+          await sendPasswordResetEmail(user.email, url)
+        } catch {
+          console.error('Password reset email delivery failed. Check email provider configuration and availability.')
+        }
+      },
+    },
+    trustedOrigins: trustedOrigins(baseURL),
     hooks: {
       before: createAuthMiddleware(async ctx => {
+        if (ctx.path === '/request-password-reset') {
+          const env = runtimeEnv()
+          if (!env.RESEND_API_KEY?.trim() || !env.KERNEL_EMAIL_FROM?.trim()) {
+            throw new APIError('SERVICE_UNAVAILABLE', { message: 'Password recovery is not configured yet. Contact your workspace operator.' })
+          }
+        }
         if (ctx.path !== '/sign-up/email') return
         const body = ctx.body as { invitationCode?: unknown; applicationInvite?: unknown; email?: unknown } | undefined
         const applicationInvite = typeof body?.applicationInvite === 'string' ? body.applicationInvite : ''

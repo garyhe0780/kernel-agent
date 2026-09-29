@@ -10,7 +10,7 @@ The public landing page is at `/`. The documentation site is at `/docs`, with gu
 
 ## Start locally
 
-Requires Node.js 22.12 or later and pnpm 9.14.2. Configure local environment values using `.env.example`; signup requires `KERNEL_SIGNUP_CODE`.
+Requires Node.js 22.12 or later and pnpm 12.6.0. Configure local environment values using `.env.example`; signup requires `KERNEL_SIGNUP_CODE`.
 
 ```sh
 pnpm install
@@ -28,5 +28,6 @@ See [model configuration](docs/MODEL_PROVIDERS.md) for the optional connected bu
 - [Module extensions](docs/MODULE_EXTENSIONS.md): author, register, compose, and upgrade reusable business modules.
 - [Agent API](docs/AGENT_API.md): connect an external builder or operating agent.
 - [Milestone acceptance](docs/MILESTONE_ACCEPTANCE.md): existing evidence and outstanding validation.
+- [Production acceptance](docs/PRODUCTION_ACCEPTANCE.md): read-only deployment smoke checks and an isolated CRM/project pilot checklist.
 
 Run `pnpm check` for type checking, tests, and a production build. Tests use isolated databases. Deployment instructions are in [Cloudflare](docs/CLOUDFLARE.md).

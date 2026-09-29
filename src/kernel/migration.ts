@@ -1,6 +1,7 @@
-import { applicationPresentation } from './application-views'
+import { applicationPresentation, describeViewFilter } from './application-views'
+import { InputError } from './errors'
 import { validateApplication, type Application } from './application'
-import { validateFields, type Definition, type Field, type RecordData } from './definition'
+import { ruleSymbol, validateFields, type Definition, type Field, type RecordData } from './definition'
 
 export type MigrationChange = { entity: string; label: string; before: string; after: string }
 export type MigrationReport = {
@@ -9,8 +10,10 @@ export type MigrationReport = {
   blockerCount: number
   recordCount: number
   updatedRecordCount: number
+  deletedRecordCount: number
+  removedValueCount: number
   invalidatedProposals: number
-  entities: { slug: string; name: string; records: number; updatedRecords: number; added: boolean }[]
+  entities: { slug: string; name: string; records: number; updatedRecords: number; added: boolean; removed?: boolean }[]
   examples: { entity: string; title: string; fields: { label: string; before: string; after: string }[] }[]
   canPublish: boolean
 }
@@ -29,12 +32,12 @@ export function namespaceApplication(app: Application, slug: string): Definition
 }
 
 function fieldSummary(field: Field) {
-  return [field.label, field.reference ? `Links to ${field.reference}` : field.type, field.required ? 'required' : 'optional', field.editable ? 'editable' : 'set by actions', field.default === undefined ? '' : `default: ${String(field.default)}`, field.options?.join(', '), field.min === undefined ? '' : `minimum: ${field.min}`, field.max === undefined ? '' : `maximum: ${field.max}`].filter(Boolean).join(' · ')
+  return [field.label, field.reference ? `Links to ${field.reference}` : field.type, field.required ? 'required' : 'optional', field.editable ? 'editable' : 'set by actions', field.default === undefined ? '' : `default: ${String(field.default)}`, field.options?.join(', '), field.closed?.length ? `closed: ${field.closed.join(', ')}` : '', field.format ? `format: ${field.format}` : '', field.referenceMatch ? `match: ${field.referenceMatch.targetField} equals this record’s ${field.referenceMatch.sourceField}` : '', field.min === undefined ? '' : `minimum: ${field.min}`, field.max === undefined ? '' : `maximum: ${field.max}`].filter(Boolean).join(' · ')
 }
 function actionSummary(action: Definition['actions'][number], entity: Definition) {
-  return [action.label, action.description, `Roles: ${action.roles.join(', ')}`,
+  return [action.label, action.description, `Roles: ${action.roles.join(', ')}`, `Human execution: ${action.humanExecution ?? 'review'}`,
     ...Object.values(action.input).map(f => `Input: ${fieldSummary(f)}`),
-    ...[...action.preconditions, ...action.policies].map(r => `${r.label}: ${entity.entity.fields[r.field]?.label ?? r.field} ${r.operator === 'lte' ? '≤' : '='} ${String(r.setting ? entity.settings[r.setting] : r.value)}${r.enabledBy ? ` (enabled: ${String(entity.settings[r.enabledBy])})` : ''}`),
+    ...[...action.preconditions, ...action.policies].map(r => `${r.label}: ${entity.entity.fields[r.field]?.label ?? r.field} ${ruleSymbol(r.operator)}${r.operator === 'present' ? '' : ` ${String(r.setting ? entity.settings[r.setting] : r.value)}`}${r.enabledBy ? ` (enabled: ${String(entity.settings[r.enabledBy])})` : ''}`),
     ...Object.entries(action.effects).map(([key, value]) => `Set ${entity.entity.fields[key]?.label ?? key}: ${String(value)}`),
   ].join('; ')
 }
@@ -51,8 +54,8 @@ export function planMigration(beforeRaw: unknown, afterRaw: unknown, projectSlug
     const view = app.views.find(view => view.id === id)
     if (!view) return 'Not present'
     const entity = app.entities.find(entity => entity.slug === view.entity)!
-    const filters = view.filters.map(filter => `${entity.entity.fields[filter.field].label} ${filter.operator === 'eq' ? 'equals' : filter.operator === 'lte' ? 'at most' : 'at least'} ${filter.field.endsWith('Cents') && typeof filter.value === 'number' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(filter.value / 100) : String(filter.value)}`).join(' and ') || 'All records'
-    return `${view.name} · ${entity.entity.label} · ${filters} · Sort: ${view.sort.field === '$createdAt' ? 'Created time' : entity.entity.fields[view.sort.field].label} ${view.sort.direction === 'asc' ? 'ascending' : 'descending'} · Columns: ${view.columns.length ? view.columns.map(key => entity.entity.fields[key].label).join(', ') : 'Default'}`
+    const filters = view.filters.map(filter => describeViewFilter(filter, entity.entity.fields)).join(' and ') || 'All records'
+    return `${view.name} · Timezone: ${view.timeZone ?? 'UTC'} · ${entity.entity.label} · ${filters} · Sort: ${view.sort.field === '$createdAt' ? 'Created time' : entity.entity.fields[view.sort.field].label} ${view.sort.direction === 'asc' ? 'ascending' : 'descending'} · Columns: ${view.columns.length ? view.columns.map(key => entity.entity.fields[key].label).join(', ') : 'Default'}`
   }
   for (const id of new Set([...before.views.map(view => view.id), ...after.views.map(view => view.id)])) change('Application', `View: ${after.views.find(view => view.id === id)?.name ?? before.views.find(view => view.id === id)?.name}`, describeView(before, id), describeView(after, id))
   const describeNavigation = (app: Application) => applicationPresentation(app).navigation.map(item => `${item.label} (${app.entities.find(entity => entity.slug === item.entity)?.entity.label})`).join(' → ')
@@ -67,20 +70,36 @@ export function planMigration(beforeRaw: unknown, afterRaw: unknown, projectSlug
   change('Application', 'Name', before.name, after.name)
   change('Application', 'Description', before.description, after.description)
   change('Application', 'Assumptions', before.assumptions.join('; '), after.assumptions.join('; '))
+  const updates: { id: string; version: number; data: RecordData }[] = []
+  const changedCapabilities: string[] = []
+  const removedCapabilities: string[] = []
+  const deletions: { id: string; version: number }[] = []
+  const reportEntities: MigrationReport['entities'] = []
+  const examples: MigrationReport['examples'] = []
+  let removedValueCount = 0
+  // Removals are destructive: the preview states what will be deleted, and publishing the preview token accepts it.
   for (const entity of before.entities) {
     const next = after.entities.find(e => e.slug === entity.slug)
-    if (!next) { block(entity.name, 'Removing or renaming an entity is not supported. Keep its identifier to preserve existing records.'); continue }
+    if (!next) {
+      const capability = `${projectSlug}__${entity.slug}`
+      const owned = records.filter(r => r.capability === capability)
+      removedCapabilities.push(capability)
+      deletions.push(...owned.map(r => ({ id: r.id, version: r.version })))
+      change(entity.name, 'Entity', `${entity.name} · ${entity.entity.label}`, `Removed · ${owned.length} ${owned.length === 1 ? 'record' : 'records'} will be deleted`)
+      reportEntities.push({ slug: entity.slug, name: entity.name, records: owned.length, updatedRecords: 0, added: false, removed: true })
+      continue
+    }
     if (next.entity.name !== entity.entity.name) block(entity.name, 'Changing the stored entity identifier is not supported.')
     for (const [key, field] of Object.entries(entity.entity.fields)) {
       const nextField = next.entity.fields[key]
-      if (!nextField) block(entity.name, `Removing or renaming ${field.label} is not supported. Keep its field identifier.`)
+      if (!nextField) {
+        const stored = records.filter(r => r.capability === `${projectSlug}__${entity.slug}` && r.data[key] !== undefined && r.data[key] !== '').length
+        removedValueCount += stored
+        change(entity.name, field.label, fieldSummary(field), `Removed · ${stored} stored ${stored === 1 ? 'value' : 'values'} will be deleted`)
+      }
       else if (field.type !== nextField.type || field.reference !== nextField.reference) block(entity.name, `Changing the type or relationship target of ${field.label} is not supported.`)
     }
   }
-  const updates: { id: string; version: number; data: RecordData }[] = []
-  const changedCapabilities: string[] = []
-  const reportEntities: MigrationReport['entities'] = []
-  const examples: MigrationReport['examples'] = []
   for (const entity of after.entities) {
     const old = before.entities.find(e => e.slug === entity.slug)
     const capability = `${projectSlug}__${entity.slug}`
@@ -103,22 +122,29 @@ export function planMigration(beforeRaw: unknown, afterRaw: unknown, projectSlug
     for (const record of ownedRecords) {
       try {
         // Add defaults only to absent fields. Existing values are never overwritten by a new default.
-        const candidate = { ...record.data }
+        const candidate = Object.fromEntries(Object.entries(record.data).filter(([key]) => Object.hasOwn(entity.entity.fields, key)))
         for (const [key, field] of Object.entries(entity.entity.fields)) if (candidate[key] === undefined && field.default !== undefined) candidate[key] = field.default
         validateFields(entity.entity.fields, candidate)
         for (const [key, field] of Object.entries(entity.entity.fields)) {
           if (!field.reference) continue
-          if (!candidate[key] && field.required) throw new Error(`${field.label} needs an existing linked record.`)
-          if (candidate[key] && !records.some(r => r.id === candidate[key] && r.capability === `${projectSlug}__${field.reference}`)) throw new Error(`${field.label} points to an unavailable record.`)
+          if (!candidate[key] && field.required) throw new InputError(`${field.label} needs an existing linked record.`)
+          if (candidate[key] && field.referenceMatch) {
+            const target = records.find(r => r.id === candidate[key] && r.capability === `${projectSlug}__${field.reference}`)
+            if (!candidate[field.referenceMatch.sourceField] || target?.data[field.referenceMatch.targetField] !== candidate[field.referenceMatch.sourceField]) throw new InputError(`${field.label} does not match ${entity.entity.fields[field.referenceMatch.sourceField].label}.`)
+          }
+          if (candidate[key] && !records.some(r => r.id === candidate[key] && r.capability === `${projectSlug}__${field.reference}`)) throw new InputError(`${field.label} points to an unavailable record.`)
         }
         if (canonical(candidate) !== canonical(record.data)) {
           updates.push({ id: record.id, version: record.version, data: candidate })
-          if (examples.length < 5) examples.push({ entity: entity.name, title: String(record.data.title), fields: Object.entries(candidate).filter(([key, value]) => value !== record.data[key]).map(([key, value]) => ({ label: entity.entity.fields[key].label, before: record.data[key] === undefined ? 'Not set' : String(record.data[key]), after: String(value) })) })
+          if (examples.length < 5) examples.push({ entity: entity.name, title: String(record.data.title), fields: [...new Set([...Object.keys(record.data), ...Object.keys(candidate)])].filter(key => candidate[key] !== record.data[key]).map(key => ({ label: entity.entity.fields[key]?.label ?? old?.entity.fields[key]?.label ?? key, before: record.data[key] === undefined ? 'Not set' : String(record.data[key]), after: candidate[key] === undefined ? 'Deleted' : String(candidate[key]) })) })
         }
-      } catch (error) { block(entity.name, error instanceof Error ? error.message : 'Record is incompatible with this definition.', record.id) }
+      } catch (error) {
+        if (!(error instanceof InputError)) throw error
+        block(entity.name, error.message, record.id)
+      }
     }
     reportEntities.push({ slug: entity.slug, name: entity.name, records: ownedRecords.length, updatedRecords: updates.length - countBefore, added: !old })
   }
-  const report: MigrationReport = { changes, blockers, blockerCount, recordCount: records.length, updatedRecordCount: updates.length, invalidatedProposals: pending.filter(p => changedCapabilities.includes(p.capability)).length, entities: reportEntities, examples, canPublish: blockerCount === 0 }
-  return { report, updates, changedCapabilities }
+  const report: MigrationReport = { changes, blockers, blockerCount, recordCount: records.length, updatedRecordCount: updates.length, deletedRecordCount: deletions.length, removedValueCount, invalidatedProposals: pending.filter(p => changedCapabilities.includes(p.capability) || removedCapabilities.includes(p.capability)).length, entities: reportEntities, examples, canPublish: blockerCount === 0 }
+  return { report, updates, changedCapabilities, removedCapabilities, deletions }
 }

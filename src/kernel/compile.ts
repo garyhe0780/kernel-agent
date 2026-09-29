@@ -1,4 +1,5 @@
 import { applySettings } from './definition'
+import { InputError } from './errors'
 import { validateAssembly, type Assembly } from './assembly'
 import { composeSurface } from './blocks'
 import { moduleCatalog, portRequired } from './modules'
@@ -21,7 +22,7 @@ function assemblyFrom(pattern: KernelPattern): Assembly {
 
 export function assemblePattern(id: string): Assembly {
   const pattern = patternById(id)
-  if (!pattern) throw new Error(`Unknown pattern: ${id}`)
+  if (!pattern) throw new InputError(`Unknown pattern: ${id}`)
   return assemblyFrom(pattern)
 }
 
@@ -61,7 +62,17 @@ export function materializeAssembly(raw: unknown, catalog: ModuleCatalog = modul
       const [alias, field] = link.from.split('.')
       if (alias !== item.as) continue
       const port = mod.ports.find(entry => entry.field === field)!
-      compiled.entity.fields[field] = { label: port.label, type: 'string', required: portRequired(port), editable: true, reference: link.to }
+      compiled.entity.fields[field] = { label: port.label, type: 'string', required: portRequired(port), editable: true, reference: link.to, ...(port.referenceMatch ? { referenceMatch: port.referenceMatch } : {}) }
+    }
+    if (mod.recordEditing) {
+      if (compiled.actions.some(action => action.name === 'edit')) throw new InputError('The edit action is reserved when recordEditing is enabled.')
+      const editable = Object.entries(compiled.entity.fields).filter(([, field]) => field.editable)
+      compiled.actions.push({
+        name: 'edit', label: `Edit ${compiled.entity.label.toLowerCase()}`, description: 'Update record details. Lifecycle status is changed separately.',
+        humanExecution: 'direct', roles: ['owner', 'operator'],
+        input: Object.fromEntries(editable.map(([key, field]) => [key, { ...field, required: true }])),
+        preconditions: [], policies: [], effects: Object.fromEntries(editable.map(([key]) => [key, `$input.${key}`])),
+      })
     }
     return compiled
   })

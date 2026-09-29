@@ -4,7 +4,7 @@ import type { BusinessRecord, CapabilitySnapshot, Proposal, Snapshot } from '@/l
 export function statusVariant(status: string) {
   const value = status.toLowerCase()
   if (value === 'open') return 'primary' as const
-  if (value === 'approved' || value === 'applied' || value === 'published' || value === 'converted' || value === 'confirmed' || value === 'invoiced' || value === 'resolved' || value === 'done' || value === 'assigned' || value === 'active' || value === 'closed' || value === 'completed' || value === 'posted') return 'success' as const
+  if (value === 'approved' || value === 'applied' || value === 'published' || value === 'converted' || value === 'confirmed' || value === 'invoiced' || value === 'resolved' || value === 'done' || value === 'assigned' || value === 'active' || value === 'closed' || value === 'completed' || value === 'posted' || value === 'won') return 'success' as const
   if (value === 'submitted' || value === 'pending' || value === 'staged' || value === 'draft' || value === 'quoted' || value === 'demo' || value === 'waiting' || value === 'at_risk' || value === 'in_stock' || value === 'on_leave' || value === 'remediating' || value === 'started' || value === 'backlog' || value === 'planned') return 'warning' as const
   if (value === 'declined' || value === 'rejected' || value === 'blocked' || value === 'conflict' || value === 'lost' || value === 'retired' || value === 'offboarded' || value === 'waived' || value === 'canceled' || value === 'revoked' || value === 'failed') return 'danger' as const
   return 'neutral' as const
@@ -42,6 +42,7 @@ export function previewInput(definition: Definition, actionName: string) {
   for (const [key, field] of Object.entries(action?.input ?? {})) {
     if (field.type === 'integer') input[key] = field.min ?? 1
     else if (field.type === 'boolean') input[key] = Boolean(field.default)
+    else if (field.format === 'date') input[key] = field.default ?? '2026-01-01'
     else if (field.type === 'enum') input[key] = field.options?.[0] ?? ''
     else input[key] = 'Preview reason for availability.'
   }
@@ -50,7 +51,16 @@ export function previewInput(definition: Definition, actionName: string) {
 
 export function actionPreview(definition: Definition, record: BusinessRecord, actionName: string, role: string) {
   try {
-    return evaluate(definition, actionName, record.data, previewInput(definition, actionName), role)
+    const input = previewInput(definition, actionName)
+    const action = definition.actions.find(item => item.name === actionName)
+    for (const [key, mapping] of Object.entries(action?.effects ?? {})) {
+      if (typeof mapping === 'string' && mapping.startsWith('$input.')) {
+        const name = mapping.slice(7)
+        if (definition.entity.fields[key]?.editable && record.data[key] !== undefined) input[name] = record.data[key]
+      }
+    }
+    // Input contents do not decide action visibility; rules and role do.
+    return evaluate(definition, actionName, record.data, input, role === 'application' ? 'operator' : role)
   } catch {
     return null
   }

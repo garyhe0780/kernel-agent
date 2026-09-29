@@ -19,6 +19,7 @@ export const kernelCommands = {
   update_member: { layer: 'core', family: 'identity', actors: ['human'] },
   create_workspace: { layer: 'core', family: 'identity', actors: ['human'] },
   rename_workspace: { layer: 'core', family: 'identity', actors: ['human'] },
+  act: { layer: 'core', family: 'execution', actors: ['human'] },
   create: { layer: 'core', family: 'data', actors: ['human'] },
   start_run: { layer: 'core', family: 'execution', actors: ['operate-agent'] },
   manage_run: { layer: 'core', family: 'execution', actors: ['human', 'operate-agent'] },

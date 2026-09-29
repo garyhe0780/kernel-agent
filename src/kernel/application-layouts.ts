@@ -28,10 +28,11 @@ export const recordLayoutSchema = z.object({
 }).strict()
 export type RecordLayout = z.infer<typeof recordLayoutSchema>
 
-/** Unassigned and newly added fields remain visible; layouts are not permissions. */
+/** Unassigned and newly added fields remain visible; layouts are not permissions. Empty read-only fields have nothing to show or edit. */
 export function recordSections(definition: Definition, layout?: RecordLayout, data?: RecordData) {
   if (!layout) return [{ id: 'default', name: '', fields: Object.keys(definition.entity.fields) }]
   const used = new Set(layout.sections.flatMap(section => section.fields))
-  const remaining = Object.keys(definition.entity.fields).filter(key => !used.has(key))
+  const empty = (key: string) => data !== undefined && !definition.entity.fields[key].editable && (data[key] === undefined || data[key] === null || data[key] === '')
+  const remaining = Object.keys(definition.entity.fields).filter(key => !used.has(key) && !empty(key))
   return [...layout.sections.filter(section => section.fields.length && (data === undefined || sectionMatches(data, section.when))), ...(remaining.length ? [{ id: '$remaining', name: 'Other details', fields: remaining }] : [])]
 }
