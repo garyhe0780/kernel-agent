@@ -1,6 +1,6 @@
-import { useCallback, useContext, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import { FrameBreadcrumbContext } from './frame-breadcrumb'
-import { ChevronRight, Plus, Search, RefreshCw } from 'lucide-react'
+import { ChevronRight, Plus, Search, RefreshCw, Copy, Check } from 'lucide-react'
 import { request, date } from '@/lib/client'
 import { Button } from './ui/button'
 import { Tabs } from './ui/tabs'
@@ -71,6 +71,10 @@ export function AccountMembers({
   const [email, setEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('operator')
   const [inviteLink, setInviteLink] = useState('')
+  const [inviteCopied, setInviteCopied] = useState(false)
+  const inviteEmailId = useId()
+  const inviteCopyButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => { if (inviteLink) inviteCopyButton.current?.focus({ preventScroll: true }) }, [inviteLink])
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -503,7 +507,7 @@ export function AccountMembers({
           Refresh
         </Button>
       </div>}
-      {error && form !== 'group' && form !== 'policy' ? (
+      {error && form !== 'group' && form !== 'policy' && form !== 'invite' ? (
         <Alert variant="danger">{error}</Alert>
       ) : null}
       {notice ? (
@@ -801,113 +805,15 @@ export function AccountMembers({
                         'Search by name or email…',
                         'Invite members',
                         () => {
-                          setForm('invite')
+                          setEmail('')
+                          setInviteRole('operator')
+                          setError('')
+                          setNotice('')
                           setInviteLink('')
+                          setInviteCopied(false)
+                          setForm('invite')
                         }
                       )}
-                      {form === 'invite' ? (
-                        <form
-                          className="members-editor"
-                          onSubmit={async (event) => {
-                            event.preventDefault()
-                            setBusy(true)
-                            setError('')
-                            setInviteLink('')
-                            try {
-                              const result = await request<{ token: string }>(
-                                '/api/kernel',
-                                project
-                                  ? {
-                                      type: 'invite_application_user',
-                                      project,
-                                      email: email.trim(),
-                                    }
-                                  : {
-                                      type: 'invite_member',
-                                      email: email.trim(),
-                                      role: inviteRole,
-                                    }
-                              )
-                              setInviteLink(
-                                project
-                                  ? `${window.location.origin}/login?mode=signup&app=${encodeURIComponent(result.token)}`
-                                  : `${window.location.origin}/settings?workspace=default#invite=${encodeURIComponent(result.token)}`
-                              )
-                              setEmail('')
-                              setRevision((value) => value + 1)
-                            } catch (e) {
-                              setError(
-                                e instanceof Error
-                                  ? e.message
-                                  : 'Unable to create invitation.'
-                              )
-                              setBusy(false)
-                            }
-                          }}
-                        >
-                          <h3>Invite members</h3>
-                          <p>
-                            Create a private link for this email. It expires in
-                            seven days. No email is sent.
-                          </p>
-                          <div className="members-invite-fields">
-                            <Field
-                              value={email}
-                              onChange={setEmail}
-                              type="email"
-                              isRequired
-                              maxLength={254}
-                              isDisabled={busy}
-                            >
-                              <FieldLabel>Email address</FieldLabel>
-                              <Input placeholder="colleague@company.com" />
-                            </Field>
-                            {!project ? (
-                              <label>
-                                Role
-                                <select
-                                  className="input"
-                                  value={inviteRole}
-                                  disabled={busy}
-                                  onChange={(event) =>
-                                    setInviteRole(event.target.value)
-                                  }
-                                >
-                                  <option value="operator">Operator</option>
-                                  <option value="owner">Owner</option>
-                                </select>
-                              </label>
-                            ) : null}
-                            <Button
-                              type="submit"
-                              disabled={busy || !email.trim()}
-                            >
-                              {busy ? 'Creating…' : 'Create invite link'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              disabled={busy}
-                              onPress={() => setForm(undefined)}
-                            >
-                              Close
-                            </Button>
-                          </div>
-                          {inviteLink ? (
-                            <label>
-                              Invitation link
-                              <input
-                                className="input"
-                                readOnly
-                                value={inviteLink}
-                                onFocus={(event) => event.target.select()}
-                              />
-                              <span className="members-secondary" role="status">
-                                Copy this link to share with the invited person.
-                              </span>
-                            </label>
-                          ) : null}
-                        </form>
-                      ) : null}
                       {table(
                         data.members.filter((member) =>
                           matches(`${member.user.name} ${member.user.email}`)
@@ -1031,6 +937,68 @@ export function AccountMembers({
           )}
         </>
       )}
+      <Dialog
+        open={form === 'invite'}
+        onOpenChange={(open) => {
+          if (!open && !busy) { setForm(undefined); setError('') }
+        }}
+        title={inviteLink ? 'Invitation link ready' : 'Invite members'}
+        description={inviteLink
+          ? `Share this private link with ${email.trim()}. It expires in seven days. No email is sent.`
+          : 'Create a private link for this email. It expires in seven days. No email is sent.'}
+        className="members-create-dialog members-invite-dialog"
+        isDismissable={!busy}
+        showCloseButton={!busy}
+      >
+        {error ? <Alert variant="danger">{error}</Alert> : null}
+        {inviteLink ? <div className="stack members-invite-result">
+          <div className="members-invite-link-heading">
+            <span id={`${inviteEmailId}-link`} className="field-label">Invitation link</span>
+            <Button ref={inviteCopyButton} aria-label={inviteCopied ? 'Copy invite link again' : 'Copy invite link'} onPress={async () => {
+              try { await navigator.clipboard.writeText(inviteLink); setInviteCopied(true); setError('') }
+              catch { setError('Could not copy the link. Select the link text below and copy it manually.') }
+            }}>{inviteCopied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}{inviteCopied ? 'Copied' : 'Copy link'}</Button>
+          </div>
+          <output className="members-invite-link" aria-labelledby={`${inviteEmailId}-link`}><code>{inviteLink}</code></output>
+          <span className="sr-only" role="status">{inviteCopied ? 'Invitation link copied.' : ''}</span>
+          <footer className="dialog-actions">
+            <Button variant="outline" onPress={() => { setForm(undefined); setError('') }}>Done</Button>
+          </footer>
+        </div> : <form className="stack" aria-busy={busy} onSubmit={async event => {
+          event.preventDefault()
+          if (busy) return
+          setBusy(true); setError('')
+          try {
+            const result = await request<{ token: string }>('/api/kernel', project
+              ? { type: 'invite_application_user', project, email: email.trim() }
+              : { type: 'invite_member', email: email.trim(), role: inviteRole })
+            setInviteLink(project
+              ? `${window.location.origin}/login?mode=signup&app=${encodeURIComponent(result.token)}`
+              : `${window.location.origin}/settings?workspace=default#invite=${encodeURIComponent(result.token)}`)
+            setRevision(value => value + 1)
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Unable to create invitation. Try again.')
+          } finally { setBusy(false) }
+        }}>
+          <div className="field">
+            <label className="field-label" htmlFor={inviteEmailId}>Email address</label>
+            <input id={inviteEmailId} className="input" name="email" type="email" required maxLength={254}
+              autoFocus autoComplete="email" placeholder="colleague@company.com" disabled={busy}
+              value={email} onChange={event => setEmail(event.target.value)} />
+          </div>
+          {!project ? <label className="members-invite-role">
+            Role
+            <select className="input" value={inviteRole} disabled={busy} onChange={event => setInviteRole(event.target.value)}>
+              <option value="operator">Operator</option>
+              <option value="owner">Owner</option>
+            </select>
+          </label> : null}
+          <footer className="dialog-actions">
+            <Button variant="outline" disabled={busy} onPress={() => { setForm(undefined); setError('') }}>Cancel</Button>
+            <Button type="submit" disabled={busy || !email.trim()}>{busy ? 'Creating…' : 'Create invite link'}</Button>
+          </footer>
+        </form>}
+      </Dialog>
       <Dialog
         open={Boolean(group) && form === 'policy'}
         onOpenChange={(open) => {

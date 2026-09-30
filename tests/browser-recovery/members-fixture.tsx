@@ -12,7 +12,10 @@ import type { Snapshot } from '../../src/lib/client'
 import '../../src/styles.css'
 
 // Isolated UI fixture: every identity is synthetic and all writes stay in memory.
-const application = new URLSearchParams(location.search).has('application')
+const params = new URLSearchParams(location.search)
+const application = params.has('application')
+let failNextInvite = params.has('inviteFailure')
+const invitations: {id:string;email:string;role?:string;expiresAt:string}[] = []
 const workspace = { id: 'preview', name: 'Example workspace' }
 const project = {
   id: 'crm',
@@ -95,9 +98,14 @@ window.fetch = async (input, init) => {
       groups,
       projectId: application ? 'crm' : null,
       projects: [project],
-      invitations: [],
+      invitations,
     })
   const command = JSON.parse(String(init.body))
+  if (command.type === 'invite_member' || command.type === 'invite_application_user') {
+    if (failNextInvite) { failNextInvite = false; return Response.json({error:'Synthetic invitation failure. Try again.'}, {status:503}) }
+    invitations.push({id:`invite-${invitations.length}`,email:command.email,role:command.role,expiresAt:'2026-10-08T00:00:00Z'})
+    return Response.json({token:'synthetic-preview-token'})
+  }
   const group = groups.find((item) => item.id === command.id)
   if (command.type === 'create_access_group') {
     const id = `group-${groups.length}`

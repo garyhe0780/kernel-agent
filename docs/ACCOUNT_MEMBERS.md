@@ -4,6 +4,8 @@ Workspace owners manage access from **Manage account → Members** in either the
 
 Invitations retain the existing private-link workflow. Workspace invitations offer Owner and Operator; application invitations grant access to that application. No invitation email is sent. Pending invitations can be revoked. Direct role changes, member removal, group deletion, and policy deletion require an in-product confirmation.
 
+**Invite members** opens the shared modal in both workspace and application directories. Email receives initial focus; workspace invitations also offer Role, defaulting to Operator. Create invite link uses native email validation, keeps request errors and entered values inside the dialog for retry, and disables submission while creating. The successful step names the recipient, explains the seven-day expiry and that no email is sent, and shows the full selectable invitation URL as noneditable output in a neutral shaded block. Copy link sits beside the Invitation link label and receives initial result focus; success shows a check and Copied with an announced live status. Done remains in the right-aligned footer. If clipboard access fails, the dialog offers manual copying. Cancel, Escape, and Done return focus to the invitation trigger; reopening starts a fresh form. The member directory remains visible behind the overlay. Existing invitation commands and link destinations are retained.
+
 Groups contain existing members of the same workspace. A workspace group may grant Owner or Operator access across the workspace, or Operator access to a specific application. An application group can only grant Operator access to that application. There is no application-only Owner role, custom action permission editor, deny policy, or field-level permission system.
 
 Permissions are additive: the strongest direct or workspace-group role wins, and application policies add specific application access. Removing a group or policy removes its grant without changing direct roles, direct application memberships, or other groups. People with workspace Owner or Operator access retain access to all applications. Application member lists identify inherited workspace access; workspace group labels remain visible in application membership lists.
@@ -38,3 +40,27 @@ Screenshot evidence in `.impeccable/review/account-members/`:
 | `mobile-policy.png` | 390 × 1087 | Visible group tabs and stacked scope/account policy fields |
 
 Type checking, production build, and the full test suite passed in the implementation run; the final authorization regression also passed in a separate targeted test run. Backend persistence and authorization are covered by isolated integration tests. The independent finish review returned **ship** after its named UI fixes were resolved. Authenticated browser persistence and a real-user end-to-end membership journey remain unverified; the fixture and screenshots do not establish either.
+
+### Invitation dialog extension
+
+The narrow invitation dialog change passed TypeScript, the production build, and `git diff --check`; its independent finish review returned **ship**. UI checks covered initial focus, native email validation and correction, retained values after a synthetic failure and successful retry, generated-link presentation (subsequently corrected below), copied feedback, dismissal focus restoration, and reset on reopening. Mobile checks found no page overflow or unnecessary workspace-dialog scrollbar. The endpoint and invitation URL construction were retained; this pass did not retest backend invitation behavior.
+
+Captures in `.impeccable/review/member-invite-dialog/`:
+
+| Capture | Dimensions | Evidence |
+| --- | --- | --- |
+| `desktop.png` | 1440 × 1000 | Application invitation form over the directory |
+| `mobile.png` | 390 × 844 | Application form at narrow width |
+| `desktop-error.png` | 1440 × 1000 | Retryable synthetic failure with retained email |
+| `desktop-result.png` | 1440 × 1000 | Invitation-link success step |
+| `mobile-result.png` | 390 × 844 | Success step at narrow width |
+| `desktop-workspace.png` | 1440 × 1000 | Workspace form with Role |
+| `mobile-workspace.png` | 390 × 844 | Workspace form with Role at narrow width |
+
+These captures use the labeled synthetic browser fixture, in-memory invitations, and a synthetic token. No real invitation or access grant was generated. This is UI-only evidence, not authenticated browser persistence or a real invitation journey. No new system tokens or shipping assets were introduced.
+
+### Invitation result correction
+
+The user correction “it's not a editable link, please redesign this” replaces the editable-looking readonly field with semantic output/code. The complete URL wraps and remains selectable; Copy link receives focus, supports repeat copying, and reports Check/Copied through a live status. Clipboard failure retains the manual-selection fallback. The existing recipient, expiry, no-email explanation, invitation commands, and link destinations remain unchanged.
+
+`.impeccable/review/invite-link-output/verification.md` records the result checks and `finish-review.md` returns **ship**. Captures in that directory are `desktop.png` and `desktop-copied.png` (1440 × 1000), plus `mobile.png` and `mobile-copied.png` (390 × 844). Checks confirmed noneditable output, copy focus and feedback, complete wrapping without horizontal overflow, and a 44px mobile copy target. TypeScript, production build, and diff whitespace checks passed. These captures use the labeled synthetic memory fixture and synthetic token; no real invitation or access grant was generated, and backend invitation behavior was not revalidated. No global tokens, visual world, or shipping assets changed.
