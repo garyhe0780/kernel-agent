@@ -72,3 +72,8 @@ Semantic icons: purchasing uses a cart, suppliers a building, review a clipboard
 Open `/application-shell.html?audit` for the actual WorkbenchApp with validated synthetic account, contact, two deals (including a large amount), task and activity records. The fixture starts at Open tasks; navigate through every CRM destination. Add `&screen=configure` for actual ProjectBuild configuration tabs/entity schemas, or `&screen=members` for the application-member directory. Use `/members.html` for synthetic group members, permission policies and settings. `&load-failure` injects one snapshot failure, then Try again recovers.
 
 No audit requests reach the live database or model. Mutations are blocked. This checks the current source/catalog renderer, not the target application's authenticated persisted definition. Coverage and captures from the 2026-10-07 pass are in `validation/crm-audit/`; conclusions and limitations are in `docs/UI_AUDIT.md`.
+
+
+## Shared notifications
+
+Open `/toasts.html` to exercise the production notification host with synthetic feedback. Check success/error/information/warning, repeated events and stacked messages, Dismiss notification, Alt+T keyboard access, automatic dismissal, and long-text wrapping at 320px. On mobile, notifications appear above the bottom safe area with 44px close targets. `/members.html` renders the actual Create group flow; success must open the group without adding page text above its tabs. No real data or permissions are changed by these fixtures.

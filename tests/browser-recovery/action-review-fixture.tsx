@@ -1,3 +1,4 @@
+import { Toaster } from '../../src/components/ui/sonner'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from '@tanstack/react-router'
@@ -53,6 +54,6 @@ window.fetch = async (input, init) => {
   return Response.json({ error: 'Synthetic preview: this action is not connected.' }, { status: 403 })
 }
 const { ProjectBuild } = await import('../../src/components/project-build')
-const rootRoute = createRootRoute({ component: () => <><ProjectBuild projectSlug={project.slug} /><p style={{ margin: 0, padding: '8px 16px', fontSize: 11 }}>Synthetic preview · No live data is changed</p></> })
+const rootRoute = createRootRoute({ component: () => <><Toaster /><ProjectBuild projectSlug={project.slug} /><p style={{ margin: 0, padding: '8px 16px', fontSize: 11 }}>Synthetic preview · No live data is changed</p></> })
 const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/p/action-review-preview/build'] }) })
 createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />)

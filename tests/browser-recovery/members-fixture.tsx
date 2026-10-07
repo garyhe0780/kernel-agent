@@ -1,4 +1,5 @@
 import React from 'react'
+import { Toaster } from '../../src/components/ui/sonner'
 import { createRoot } from 'react-dom/client'
 import {
   createRootRoute,
@@ -167,7 +168,7 @@ function Fixture() {
     </ProjectFrame>
   )
 }
-const rootRoute = createRootRoute({ component: Fixture })
+const rootRoute = createRootRoute({ component: () => <><Fixture /><Toaster /></> })
 const router = createRouter({
   routeTree: rootRoute,
   history: createMemoryHistory({

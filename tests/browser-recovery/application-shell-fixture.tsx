@@ -1,3 +1,4 @@
+import { Toaster } from '../../src/components/ui/sonner'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from '@tanstack/react-router'
@@ -67,6 +68,6 @@ window.fetch = async input => {
 const { WorkbenchApp } = await import('../../src/components/workbench-app')
 const { ProjectBuild } = await import('../../src/components/project-build')
 const { ApplicationMembers } = await import('../../src/components/application-members')
-const rootRoute = createRootRoute({ component: () => <>{params.get('screen') === 'configure' ? <ProjectBuild projectSlug={project.slug} /> : params.get('screen') === 'members' ? <ApplicationMembers projectSlug={project.slug} /> : <WorkbenchApp projectSlug={project.slug} />}<p className="shell-preview-disclosure">Synthetic preview · No live data</p></> })
+const rootRoute = createRootRoute({ component: () => <><Toaster />{params.get('screen') === 'configure' ? <ProjectBuild projectSlug={project.slug} /> : params.get('screen') === 'members' ? <ApplicationMembers projectSlug={project.slug} /> : <WorkbenchApp projectSlug={project.slug} />}<p className="shell-preview-disclosure">Synthetic preview · No live data</p></> })
 const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/p/shell-preview'] }) })
 createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />)

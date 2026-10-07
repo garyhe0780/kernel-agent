@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { CREATE_ACTION } from '@/kernel/record-operations'
 import { useEffect, useRef, useState } from 'react'
 import { Cable, Copy, Plus, RefreshCw, ShieldCheck } from 'lucide-react'
@@ -28,7 +29,6 @@ export function AgentAccessPanel({ project, capabilities, allowCreation = false 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [pageError, setPageError] = useState('')
-  const [notice, setNotice] = useState('')
   const [verified, setVerified] = useState(false)
   const [connectionNotice, setConnectionNotice] = useState('')
   const [origin, setOrigin] = useState('')
@@ -81,7 +81,6 @@ export function AgentAccessPanel({ project, capabilities, allowCreation = false 
   return <section className="agent-access" aria-label="Agent access">
     <header className="agent-access-heading"><div><h2>Agent access</h2><p>Let external agents read this application and use the actions you allow.</p></div><div className="agent-access-tools"><Button variant="outline" onPress={() => { setError(''); setConnectionNotice(''); setGuide(true) }}>Connection guide</Button><Button onPress={start}><Plus data-icon="inline-start" />Connect an agent</Button></div></header>
     {pageError ? <Alert variant="danger">{pageError} <Button variant="outline" onPress={() => void refresh().catch(e => setPageError(e.message))}>Retry loading</Button></Alert> : null}
-    {notice ? <div role="status"><Alert>{notice}</Alert></div> : null}
     <div className="agent-directory">
       <div className="agent-directory-heading"><h3>Credentials {credentials ? <span>{credentials.length}</span> : null}</h3><Button variant="ghost" size="icon" aria-label="Refresh credentials" disabled={busy} onPress={() => void refresh().catch(e => setPageError(e.message))}><RefreshCw /></Button></div>
       {!credentials ? <p className="agent-loading"><Spinner /> Loading credentials…</p> : !credentials.length ? <div className="agent-access-empty"><Cable aria-hidden="true" /><div><h3>Give your first agent access</h3><p>Choose its permissions, save a credential, then add it to your agent client.</p><Button onPress={start}>Connect an agent</Button></div></div> : <div className="agent-directory-list">{credentials.map(credential => {
@@ -103,13 +102,13 @@ export function AgentAccessPanel({ project, capabilities, allowCreation = false 
         const value = await response.json()
         if (!response.ok) throw new Error(value.error || 'Read access failed. Check the credential and try again.')
         setVerified(true)
-      })}>{busy ? <Spinner data-icon="inline-start" /> : null}Test read access</Button><Button disabled={busy} onPress={() => { setSecret(undefined); setOpen(false); setNotice(`${secret.credential.name}’s credential created. Keep it in your client’s secure configuration.`) }}>I saved the credential</Button></footer></div> : null}
+      })}>{busy ? <Spinner data-icon="inline-start" /> : null}Test read access</Button><Button disabled={busy} onPress={() => { setSecret(undefined); setOpen(false); toast.success(`${secret.credential.name}’s credential created.`, { description: "Keep it in your client’s secure configuration." }) }}>I saved the credential</Button></footer></div> : null}
     </Dialog>
     <Dialog open={guide} onOpenChange={setGuide} title="Connection guide" description="Use an active agent credential in your client’s secure configuration." className="agent-setup-modal"><ConnectionFields url={mcpUrl} onCopy={() => void copy(mcpUrl, 'Server URL')} /><p className="agent-setup-note">Credentials are shown once when created. If you no longer have yours, revoke it and connect the agent again.</p><details className="agent-http-guide"><summary>Direct HTTP API</summary><HttpGuide /></details>{connectionNotice ? <p role="status" className="agent-connection-notice">{connectionNotice}</p> : null}{error ? <Alert variant="danger">{error}</Alert> : null}<footer className="agent-dialog-footer"><Button onPress={() => setGuide(false)}>Done</Button></footer></Dialog>
     <Dialog open={Boolean(revoking)} onOpenChange={value => { if (!value && !busy) setRevoking(undefined) }} title={`Revoke ${revoking?.name ?? 'agent'}’s access?`} description="The credential will stop working immediately. Its pending proposals cannot be applied, but you can still reject them." isDismissable={!busy} showCloseButton={!busy}>{error ? <Alert variant="danger">{error}</Alert> : null}<footer className="agent-dialog-footer"><Button variant="outline" disabled={busy} onPress={() => setRevoking(undefined)}>Cancel</Button><Button variant="danger" disabled={busy} onPress={() => void run(async () => {
       const credential = revoking!
       await request('/api/kernel', { type: 'revoke_agent_credential', id: credential.id })
-      setCredentials(current => current?.map(item => item.id === credential.id ? { ...item, revokedAt: new Date().toISOString() } : item)); setRevoking(undefined); setNotice(`${credential.name} access revoked.`)
+      setCredentials(current => current?.map(item => item.id === credential.id ? { ...item, revokedAt: new Date().toISOString() } : item)); setRevoking(undefined); toast.success(`${credential.name} access revoked.`)
     })}>{busy ? <Spinner data-icon="inline-start" /> : null}Revoke access</Button></footer></Dialog>
   </section>
 }

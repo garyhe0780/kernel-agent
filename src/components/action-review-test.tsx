@@ -110,7 +110,7 @@ function Scenario({ snapshot, capability, record, actionName, onChange, onBusyCh
     if (!pending) return
     await run(async () => {
       await request('/api/kernel', { type: 'review', changeId: pending.id, decision })
-      setNotice(decision === 'reject' ? 'Proposal rejected. The record was not changed.' : 'Reviewed change applied. The execution is recorded in Activity.')
+      setNotice('')
       toast.success(decision === 'reject' ? 'Proposal rejected. The record was not changed.' : 'Reviewed change applied. The execution is recorded in Activity.')
       setReviewOpen(false)
       await onChange()
@@ -119,7 +119,7 @@ function Scenario({ snapshot, capability, record, actionName, onChange, onBusyCh
 
   return <AssignmentMembers value={snapshot.members ?? []}><div className="action-test-scenario" aria-busy={busy}>
     <ol className="action-test-steps" aria-label="Review flow"><li><Check aria-hidden="true" />Choose action</li><li aria-current={reviewOpen && pending ? undefined : 'step'}>Preview changes</li><li aria-current={reviewOpen && pending ? 'step' : undefined}>Human review</li></ol>
-    <div role="status" aria-live="polite">{notice ? <Alert>{notice}</Alert> : null}</div>
+    {notice ? <Alert>{notice}</Alert> : null}
     {error ? <Alert variant="danger">{error}</Alert> : null}
     {reviewOpen && pending ? <div ref={reviewPanel} tabIndex={-1} className="action-test-review" aria-label="Staged proposal review">
       <PendingApply record={record} proposal={pending} definition={definition} definitionVersion={capability.version} records={snapshot.records} busy={busy} canReview={snapshot.principal.role === 'owner'} onReject={() => void review('reject')} onApply={() => void review('apply')} />

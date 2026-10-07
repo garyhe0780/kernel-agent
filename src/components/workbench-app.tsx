@@ -12,7 +12,6 @@ import { snapshotRecordLimits } from '@/kernel/record-operations'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate } from '@tanstack/react-router'
 import { Plus, Sparkles, ArrowDownWideNarrow, Search, ChevronRight, Clock3, ArrowLeft, ArrowLeftRight, X } from 'lucide-react'
-import { Toaster } from 'sonner'
 import { ActionDialog, CreateEntityDialog, PendingApply, PendingReviewActions } from '@/components/kernel-dialogs'
 import { LoadingShell, ProjectFrame } from '@/components/project-frame'
 import { Button } from '@/components/ui/button'
@@ -233,7 +232,6 @@ export function WorkbenchApp({ projectSlug }: { projectSlug: string }) {
 
   return (
     <AssignmentMembers.Provider value={snapshot.members ?? []}>
-      <Toaster position="top-right" />
       <ProjectFrame snapshot={snapshot} activeEntity={definition.slug} activeView={view?.id} onViewChange={chooseView} reviewing={status === 'pending'} onEntityChange={value => { setEntitySlug(value); setViewId(null); setSort(undefined); setStatus('all'); setQuery(''); setSelectedId(undefined); setActionName(undefined); setAgentOpen(false) }} onReview={() => { setEntitySlug(definition.slug); setViewId(null); setStatus('pending'); setQuery(''); setAgentOpen(false) }}>
         <main className="main desk-main" id="main-content" tabIndex={-1}>
           <header className="main-header">

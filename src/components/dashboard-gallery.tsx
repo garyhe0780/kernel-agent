@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useEffect, useState, type ReactNode } from 'react'
 import {
   Activity,
@@ -1558,7 +1559,6 @@ function Support({ notify }: { notify: (s: string) => void }) {
 export function DashboardGallery() {
   const [page, setPage] = useState<Page>('analytics')
   const [menuOpen, setMenuOpen] = useState(false)
-  const [notice, setNotice] = useState('')
   const [help, setHelp] = useState(false)
   useEffect(() => {
     const read = () => {
@@ -1569,11 +1569,6 @@ export function DashboardGallery() {
     window.addEventListener('hashchange', read)
     return () => window.removeEventListener('hashchange', read)
   }, [])
-  useEffect(() => {
-    if (!notice) return
-    const timer = window.setTimeout(() => setNotice(''), 4500)
-    return () => window.clearTimeout(timer)
-  }, [notice])
   const current = pages.find((p) => p.id === page)!
   const Icon = current.icon
   const selectPage = (id: Page) => {
@@ -1704,13 +1699,13 @@ export function DashboardGallery() {
             </section>
           )}
           <div hidden={page !== 'analytics'}>
-            <Analytics notify={setNotice} />
+            <Analytics notify={message => toast(message)} />
           </div>
           <div hidden={page !== 'sales'}>
             <Sales />
           </div>
           <div hidden={page !== 'commerce'}>
-            <Commerce notify={setNotice} />
+            <Commerce notify={message => toast(message)} />
           </div>
           <div hidden={page !== 'finance'}>
             <Finance />
@@ -1719,10 +1714,10 @@ export function DashboardGallery() {
             <Projects />
           </div>
           <div hidden={page !== 'orders'}>
-            <DashboardOrders notify={setNotice} />
+            <DashboardOrders notify={message => toast(message)} />
           </div>
           <div hidden={page !== 'support'}>
-            <Support notify={setNotice} />
+            <Support notify={message => toast(message)} />
           </div>
           <footer className="dg-page-footer">
             <span>
@@ -1733,12 +1728,6 @@ export function DashboardGallery() {
           </footer>
         </main>
       </div>
-      {notice && (
-        <div className="dg-toast" role="status">
-          <Check />
-          {notice}
-        </div>
-      )}
     </div>
   )
 }

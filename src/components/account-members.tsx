@@ -1,6 +1,8 @@
+import { toast } from 'sonner'
 import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import { FrameBreadcrumbContext } from './frame-breadcrumb'
-import { ChevronRight, Plus, Search, RefreshCw, Copy, Check } from 'lucide-react'
+import { Menu, MenuItem, MenuTrigger, Popover } from 'react-aria-components'
+import { ChevronRight, EllipsisVertical, Plus, Search, RefreshCw, Copy, Check } from 'lucide-react'
 import { request, date } from '@/lib/client'
 import { Button } from './ui/button'
 import { Tabs } from './ui/tabs'
@@ -65,7 +67,6 @@ export function AccountMembers({
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [revision, setRevision] = useState(0)
   const [form, setForm] = useState<'invite' | 'group' | 'policy' | 'members'>()
   const [email, setEmail] = useState('')
@@ -107,18 +108,17 @@ export function AccountMembers({
       active = false
     }
   }, [project, revision])
-  async function mutate(command: object, message: string) {
+  async function mutate(command: object, message: string, description?: string) {
     if (busy) return
     setBusy(true)
     setError('')
-    setNotice('')
     try {
       const result = await request<{ id?: string }>('/api/kernel', {
         ...command,
         ...(project ? { project } : {}),
       })
       setForm(undefined)
-      setNotice(message)
+      toast.success(message, { description })
       setRevision((value) => value + 1)
       return result
     } catch (e) {
@@ -133,7 +133,6 @@ export function AccountMembers({
     setForm(undefined)
     setName(item.name)
     setDescription(item.description)
-    setNotice('')
     setError('')
   }
   const back = useCallback((toMembers = false) => {
@@ -141,7 +140,6 @@ export function AccountMembers({
     setTab(toMembers ? 'members' : 'groups')
     setForm(undefined)
     setQuery('')
-    setNotice('')
   }, [])
   useEffect(() => {
     if (!setFrameBreadcrumb) return
@@ -176,6 +174,92 @@ export function AccountMembers({
       </div>
     </div>
   )
+  const memberRowMenu = (member: Member, inGroup: boolean) => {
+    const items: { label: string; danger?: boolean; run: () => void }[] = []
+    if (inGroup) {
+      items.push({
+        label: 'Remove from group',
+        danger: true,
+        run: () =>
+          setConfirmation({
+            title: `Remove ${member.user.name} from ${group!.name}?`,
+            description:
+              'They will lose permissions granted by this group. Other access stays in place.',
+            command: {
+              type: 'set_access_group_members',
+              ...version,
+              userIds: group!.userIds.filter((id) => id !== member.user.id),
+            },
+          }),
+      })
+    } else if (member.user.id !== userId) {
+      if (!project && member.directRole !== 'application') {
+        items.push({
+          label: member.directRole === 'owner' ? 'Make operator' : 'Make owner',
+          run: () =>
+            setConfirmation({
+              title: `Change ${member.user.name}’s role?`,
+              description:
+                'This changes their direct workspace role. Group policies can grant additional access.',
+              command: {
+                type: 'update_member',
+                userId: member.user.id,
+                expectedRole: member.directRole,
+                role: member.directRole === 'owner' ? 'operator' : 'owner',
+              },
+            }),
+        })
+      }
+      if (!project || (member.role === 'application' && member.direct)) {
+        items.push({
+          label: 'Remove member',
+          danger: true,
+          run: () =>
+            setConfirmation({
+              title: `Remove ${member.user.name}?`,
+              description: project
+                ? 'Remove direct access to this application. Access granted by a group must be removed from that group.'
+                : 'They will lose workspace access and all group memberships. Records and history remain.',
+              command: project
+                ? { type: 'remove_application_member', userId: member.user.id }
+                : {
+                    type: 'update_member',
+                    userId: member.user.id,
+                    expectedRole: member.directRole,
+                    role: 'remove',
+                  },
+            }),
+        })
+      }
+    }
+    if (!items.length) return null
+    return (
+      <MenuTrigger>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="members-row-menu-trigger"
+          aria-label={`Actions for ${member.user.name}`}
+          disabled={busy}
+        >
+          <EllipsisVertical />
+        </Button>
+        <Popover placement="bottom end" className="members-row-menu">
+          <Menu aria-label={`Actions for ${member.user.name}`}>
+            {items.map((item) => (
+              <MenuItem
+                key={item.label}
+                className={item.danger ? 'members-row-menu-danger' : undefined}
+                onAction={item.run}
+              >
+                {item.label}
+              </MenuItem>
+            ))}
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+    )
+  }
   const table = (members: Member[], inGroup = false) => (
     <div className="members-table-wrap" role="region" aria-label={inGroup ? 'Group members' : project ? 'Application members' : 'Workspace members'} tabIndex={0}>
       <table className="members-table">
@@ -184,8 +268,8 @@ export function AccountMembers({
             <th scope="col">Name</th>
             <th scope="col">{inGroup ? 'Account role' : 'Role'}</th>
             {!inGroup ? <th scope="col">Groups</th> : null}
-            <th scope="col">Access</th>
-            <th scope="col">
+            <th scope="col" className="members-access">Access</th>
+            <th scope="col" className="members-row-actions">
               <span className="sr-only">Actions</span>
             </th>
           </tr>
@@ -200,9 +284,9 @@ export function AccountMembers({
                 </strong>
                 <span className="members-secondary">{member.user.email}</span>
               </td>
-              <td>{roleName(member.role)}</td>
+              <td className="members-role" data-label="Role">{roleName(member.role)}</td>
               {!inGroup ? (
-                <td>
+                <td className="members-groups" data-label="Groups">
                   {member.groups.filter(
                     (item) =>
                       item.projectId === data?.projectId ||
@@ -247,94 +331,14 @@ export function AccountMembers({
                   )}
                 </td>
               ) : null}
-              <td>
+              <td className="members-access" data-label="Access">
                 <Badge variant="success">Active</Badge>
                 {project && member.role !== 'application' ? (
                   <span className="members-secondary">From workspace</span>
                 ) : null}
               </td>
-              <td>
-                <div className="actions">
-                  {inGroup ? (
-                    <Button
-                      variant="ghost"
-                      disabled={busy}
-                      onPress={() =>
-                        setConfirmation({
-                          title: `Remove ${member.user.name} from ${group!.name}?`,
-                          description:
-                            'They will lose permissions granted by this group. Other access stays in place.',
-                          command: {
-                            type: 'set_access_group_members',
-                            ...version,
-                            userIds: group!.userIds.filter(
-                              (id) => id !== member.user.id
-                            ),
-                          },
-                        })
-                      }
-                    >
-                      Remove
-                    </Button>
-                  ) : member.user.id !== userId ? (
-                    <>
-                      {!project && member.directRole !== 'application' ? (
-                        <Button
-                          variant="outline"
-                          disabled={busy}
-                          onPress={() =>
-                            setConfirmation({
-                              title: `Change ${member.user.name}’s role?`,
-                              description:
-                                'This changes their direct workspace role. Group policies can grant additional access.',
-                              command: {
-                                type: 'update_member',
-                                userId: member.user.id,
-                                expectedRole: member.directRole,
-                                role:
-                                  member.directRole === 'owner'
-                                    ? 'operator'
-                                    : 'owner',
-                              },
-                            })
-                          }
-                        >
-                          {member.directRole === 'owner'
-                            ? 'Make operator'
-                            : 'Make owner'}
-                        </Button>
-                      ) : null}
-                      {!project ||
-                      (member.role === 'application' && member.direct) ? (
-                        <Button
-                          variant="ghost"
-                          disabled={busy}
-                          onPress={() =>
-                            setConfirmation({
-                              title: `Remove ${member.user.name}?`,
-                              description: project
-                                ? 'Remove direct access to this application. Access granted by a group must be removed from that group.'
-                                : 'They will lose workspace access and all group memberships. Records and history remain.',
-                              command: project
-                                ? {
-                                    type: 'remove_application_member',
-                                    userId: member.user.id,
-                                  }
-                                : {
-                                    type: 'update_member',
-                                    userId: member.user.id,
-                                    expectedRole: member.directRole,
-                                    role: 'remove',
-                                  },
-                            })
-                          }
-                        >
-                          Remove
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
+              <td className="members-row-actions">
+                {memberRowMenu(member, inGroup)}
               </td>
             </tr>
           ))}
@@ -510,11 +514,6 @@ export function AccountMembers({
       {error && form !== 'group' && form !== 'policy' && form !== 'invite' ? (
         <Alert variant="danger">{error}</Alert>
       ) : null}
-      {notice ? (
-        <p className="settings-notice" role="status">
-          {notice}
-        </p>
-      ) : null}
       {!data ? (
         <div className="members-load-state"><p role="status">
           {busy
@@ -629,7 +628,6 @@ export function AccountMembers({
                           setTarget(project ?? '')
                           setRole('')
                           setError('')
-                          setNotice('')
                           setForm('policy')
                         })}
                         <p className="members-help">
@@ -808,7 +806,6 @@ export function AccountMembers({
                           setEmail('')
                           setInviteRole('operator')
                           setError('')
-                          setNotice('')
                           setInviteLink('')
                           setInviteCopied(false)
                           setForm('invite')
@@ -865,7 +862,6 @@ export function AccountMembers({
                         setName('')
                         setDescription('')
                         setError('')
-                        setNotice('')
                         setForm('group')
                       })}
                       <div className="members-table-wrap" role="region" aria-label="Member groups" tabIndex={0}>
@@ -1039,7 +1035,8 @@ export function AccountMembers({
                 name,
                 description,
               },
-              'Group created. Add members and permission policies.'
+              'Group created.',
+              'Add members and permission policies.'
             )
             if (result?.id) {
               setGroupId(result.id)

@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useEffect, useState } from 'react'
 import { useWorkspaceSnapshot } from './workspace-layout'
 import { Alert, Badge, Spinner } from './ui/surfaces'
@@ -18,7 +19,6 @@ export function WorkspaceAgents() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [revision, setRevision] = useState(0)
   const [connectOpen, setConnectOpen] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<Connection>()
@@ -35,7 +35,7 @@ export function WorkspaceAgents() {
     return () => { active = false }
   }, [snapshot.principal.userId, snapshot.principal.role, owner, revision])
   async function run(work: () => Promise<void>) {
-    setBusy(true); setError(''); setNotice('')
+    setBusy(true); setError('')
     try { await work() } catch (e) { setError(e instanceof Error ? e.message : 'The request failed. Try again.') } finally { setBusy(false) }
   }
   function closeConnect(open: boolean) {
@@ -67,7 +67,6 @@ export function WorkspaceAgents() {
     <div className="main-body workspace-home-body" aria-busy={busy}>
       {owner ? <>
         {error ? <Alert variant="danger">{error}</Alert> : null}
-        {notice ? <Alert>{notice}</Alert> : null}
         <section className="stack" aria-label="Agent connections"><h2>Connected agents</h2><p className="muted workspace-section-lede">Builder credentials create applications in this workspace. Application credentials can read one application and propose only its permitted actions. Pending proposals appear in Inbox. Status reflects the last refresh.</p>
           {!busy && !error && !connections.length ? <p>No external agents are connected yet. Connect a builder to create applications from your MCP client, or grant an application credential below.</p> : null}
           {connections.map(item => <WorkspaceEntityCard
@@ -100,7 +99,7 @@ export function WorkspaceAgents() {
             if (secret?.credential.id === item.id) setSecret(undefined)
             setRevokeTarget(undefined)
             setRevision(value => value + 1)
-            setNotice(`${item.name} access revoked.`)
+            toast.success(`${item.name} access revoked.`)
           })
         }}>Revoke {revokeTarget?.name}</Button>
       </div>

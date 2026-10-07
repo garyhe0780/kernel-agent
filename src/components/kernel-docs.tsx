@@ -10,6 +10,7 @@ export function KernelDocs({ page }: { page: DocPage }) {
   const [query, setQuery] = useState('')
   const [navigationOpen, setNavigationOpen] = useState(false)
   const [activeSection, setActiveSection] = useState(page.sections[0]?.id ?? '')
+  const [searchShortcut, setSearchShortcut] = useState('⌘K')
   const matches = searchDocs(query)
   const index = docs.findIndex(item => item.slug === page.slug)
   const previous = docs[index - 1], next = docs[index + 1]
@@ -32,6 +33,18 @@ export function KernelDocs({ page }: { page: DocPage }) {
     }
   }, [page])
 
+  useEffect(() => {
+    if (!/Mac|iPhone|iPad/.test(navigator.platform)) setSearchShortcut('Ctrl K')
+    const focusSearch = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'k' || !(event.metaKey || event.ctrlKey)) return
+      event.preventDefault()
+      setNavigationOpen(true)
+      requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.docs-search input')?.focus())
+    }
+    window.addEventListener('keydown', focusSearch)
+    return () => window.removeEventListener('keydown', focusSearch)
+  }, [])
+
   return <PublicShell documentation>
     <div className="docs-layout public-container">
       <aside className="docs-sidebar" aria-label="Documentation navigation">
@@ -39,7 +52,7 @@ export function KernelDocs({ page }: { page: DocPage }) {
         <Button className="docs-mobile-nav-toggle" variant="outline" aria-expanded={navigationOpen} aria-controls="docs-navigation" onPress={() => setNavigationOpen(open => !open)}>{navigationOpen ? 'Hide guides' : 'Browse guides'}</Button>
         <p className="docs-current-guide">{page.title}</p>
         <div id="docs-navigation" className="docs-nav-content" data-open={navigationOpen}>
-        <div className="docs-search"><Field value={query} onChange={setQuery}><FieldLabel>Search documentation</FieldLabel><div className="docs-search-control"><Search aria-hidden="true" /><Input placeholder="Search guides…" /></div></Field></div>
+        <div className="docs-search"><Field value={query} onChange={setQuery}><FieldLabel>Search documentation</FieldLabel><div className="docs-search-control"><Search aria-hidden="true" /><Input placeholder="Search guides…" aria-keyshortcuts="Meta+K Control+K" onKeyDown={event => { if (event.key === 'Escape' && query) setQuery('') }} />{query ? null : <kbd className="docs-search-shortcut" aria-hidden="true">{searchShortcut}</kbd>}</div></Field></div>
         {query.trim() ? <p className="docs-search-status" role="status">{matches.length} {matches.length === 1 ? 'guide' : 'guides'} found</p> : null}
         {(['Start here', 'Build and operate', 'Reference'] as const).map(group => {
           const pages = matches.filter(item => item.group === group)

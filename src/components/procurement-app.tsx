@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { toast, Toaster } from 'sonner'
 import { ActionDialog, CreateRequestDialog, PendingApply, RecordFields } from '@/components/kernel-dialogs'
 import { LoadingShell, ProjectFrame } from '@/components/project-frame'
 import { Button } from '@/components/ui/button'
@@ -59,7 +58,6 @@ export function ProcurementApp({ projectSlug }: { projectSlug: string }) {
 
   return (
     <>
-      <Toaster position="top-right" />
       <ProjectFrame snapshot={snapshot}>
         <main className="main" id="main-content" tabIndex={-1}>
           <header className="main-header">

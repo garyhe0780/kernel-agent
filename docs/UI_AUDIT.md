@@ -299,3 +299,35 @@ Maintain the existing React Aria dialog/tab semantics, keyboard record selection
 Authenticated live integration remains pending sign-in, including the target application's persisted definition and records. This audit does not validate provider responses, issue credentials, grant permissions, submit proposals or apply live workflow actions. Physical touch/virtual keyboard, Safari/Firefox, screen-reader use, exhaustive contrast checks, 200% text scaling and large datasets remain untested.
 
 Recommended next steps are scoped verification: `$impeccable audit` on the authenticated target and physical-device interactions once access is available; `$impeccable polish` only for concrete issues found by that pass. No broader identity redesign or unrequested global CSS cleanup is implied.
+
+
+## Shared notifications — 2026-10-07
+
+Scope: the group-created message and all existing transient feedback implementations. The user requested both audit and correction. Verdict: the shared implementation now follows the Operations desk system; the five verified issues below are resolved. Assessment is scoped to notifications, not certification of the entire app.
+
+| Dimension | Before | After | Evidence / limit |
+| --- | --- | --- | --- |
+| Accessibility | 2/4 | 3/4 | Named dismissal, visible focus, keyboard notification access; Sonner owns the polite live region. Screen-reader speech was not tested. |
+| Performance | 4/4 | 4/4 | Reuses installed Sonner; one host and a bounded visible stack. No separate timer/state for transient page feedback. |
+| Responsive | 2/4 | 3/4 | Desktop, 390px mobile, and 320px long-text checks; 44px mobile close target. Physical touch/swipe not tested. |
+| Theming | 2/4 | 3/4 | Existing semantic palette, Inter, and shared overlay treatment. The approved operational surface is light; dark-mode support is not claimed. |
+| Implementation integrity | 2/4 | 4/4 | Shared root host replaces five route hosts, plain notices, and the gallery's custom toast. Form errors and persistent guidance remain contextual. |
+| Total | 12/20 | 17/20 | Good within this scope; remaining limitations are stated above. |
+
+Found: 0 P0, 0 P1, 4 P2, 1 P3.
+
+| Priority / category | Location | Impact and correction | Relevant workflow |
+| --- | --- | --- | --- |
+| P2 · Hierarchy / state | `account-members.tsx`, `workspace-settings.tsx` | Plain, indefinite success paragraphs displaced controls and competed with content. Event-driven success toasts now dismiss and leave the page layout stable. | polish / layout |
+| P2 · Consistency / lifecycle | `__root.tsx`, application components | Toast hosts lived only inside selected routes, leaving workspace feedback fragmented and coupling notification lifetime to route content. A single root host now serves every route. | harden |
+| P2 · Accessibility | `action-review-test.tsx`, `agent-access.tsx` | Review completion appeared twice and status alerts had redundant live-region wrappers. Completion now emits once; staged-review guidance retains one contextual status alert. | harden |
+| P2 · Responsive / controls | shared Sonner host and styles | Default close buttons were small and corner placement lacked an app-wide mobile policy. Close controls sit inside the card and grow to 44px; mobile toasts sit at the bottom with safe-area insets. WCAG 2.5.8 sizing is addressed by implementation; physical touch remains unverified. | adapt |
+| P3 · Visual hierarchy | shared host, gallery | Unrelated toast treatments lacked a consistent confirmation/guidance hierarchy. White surfaces, semantic icons, 13px Inter, and optional secondary descriptions unify the feedback. | polish |
+
+Positive findings preserved: existing membership errors stay inside forms; pending proposals, credential-copy feedback, and connection-test evidence keep their local guidance; text communicates outcomes without depending on color. No backend commands, permissions, or persisted data changed.
+
+Browser evidence uses the production components with synthetic, memory-only requests: `.impeccable/review/toasts/desktop.jpg` (1280×720) and `mobile.jpg` (390×844) show group creation and final placement; `long-mobile.jpg` (320×740) shows a 160-character unbroken string wrapping. The mobile page width remained 390px; the narrow fixture remained 320px. Success, error, information, warning, and a three-toast stack were exercised. Click dismissal, automatic disappearance, Alt+T focus, and the 2px focus outline were observed. No authenticated browser persistence, screen-reader speech, or physical swipe test is claimed.
+
+The mechanical detector ran once over the changed surfaces. Its 193 findings concern broad existing style ramps/colors/radii and the intentionally approved Inter face; the only finding in the newly appended toast styles was the generic Inter warning, which conflicts with the pinned desk identity. No detector-driven palette or font replacement was made. The design sidecar's preexisting drift remains outside this task.
+
+Validation: TypeScript and the production client/server build pass; `git diff --check` passes. The isolated notification fixture is `/toasts.html` on the existing browser-recovery server. The members, action-review, agent-access, and application-shell fixtures mount the same host as the application root. Backend tests were not rerun for this UI-only change.

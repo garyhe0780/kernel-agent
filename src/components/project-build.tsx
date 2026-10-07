@@ -7,7 +7,6 @@ import type { MigrationReport } from '@/kernel/migration'
 import { Fragment, useState } from 'react'
 import { ArrowRight, ChevronDown, Search, PencilLine } from 'lucide-react'
 import { Link, Navigate } from '@tanstack/react-router'
-import { Toaster } from 'sonner'
 import { LoadingShell, ProjectFrame } from '@/components/project-frame'
 import { Button } from '@/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/form-field'
@@ -175,7 +174,6 @@ export function ProjectBuild({ projectSlug }: { projectSlug: string }) {
 
   return (
     <>
-      <Toaster position="top-right" />
       <ProjectFrame snapshot={snapshot} liveHref={snapshot.project?.shell === 'site' ? `/s/${snapshot.workspace.id}` : undefined} configure>
         <main className="main config-page" id="main-content" tabIndex={-1}>
           <header className="main-header">
