@@ -4070,7 +4070,24 @@ body:has(.dashboard-gallery) {
 .public-cta:hover { background: var(--color-cobalt-ink); }
 .public-text-link { display: inline-flex; align-items: center; gap: 10px; color: var(--color-cobalt-ink); font-weight: 550; text-decoration: none; font-size: 14px; }
 .public-text-link:hover { text-decoration: underline; }
+.public-actions .public-cta { min-height: 52px; padding-block: 12px; border: 1px solid transparent; }
+.public-actions .public-text-link { min-height: 52px; }
+.public-actions .public-cta-outline { color: var(--color-cobalt-ink); background: var(--color-surface); border-color: var(--color-cobalt); }
+.public-actions .public-cta-outline:hover { background: var(--color-cobalt-wash); }
+.public-actions .public-cta-outline:active { background: var(--color-cobalt-soft); }
 .public-hero-copy > .public-hero-note { font-size: 13px; margin-top: 20px; }
+.public-waitlist { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 70px; align-items: start; padding-block: 40px 56px; border-top: 1px solid var(--color-line); }
+.public-waitlist > div > p { max-width: 40ch; margin-top: 16px; color: var(--color-quiet); font-size: 16px; line-height: 1.7; }
+.public-waitlist-form { min-width: 0; }
+.public-waitlist-form .field-group { gap: 16px; }
+.public-waitlist-form .input { min-height: 48px; border-radius: 6px; font-size: 16px; caret-color: var(--color-cobalt); }
+.public-waitlist-form .input::placeholder { color: var(--color-quiet); opacity: 1; }
+.public-waitlist-form .button { min-height: 48px; align-self: flex-start; border-radius: 6px; }
+.public-waitlist-form .public-waitlist-note { max-width: 48ch; color: var(--color-quiet); font-size: 13px; line-height: 1.6; }
+@media (max-width: 700px) {
+  .public-waitlist { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 32px 40px; }
+  .public-waitlist-form .button { width: 100%; }
+}
 .runtime-map { min-width: 0; }
 .runtime-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .runtime-inputs > div { justify-self: center; display: grid; grid-template-columns: 24px 1fr; column-gap: 10px; align-items: center; }
@@ -4215,7 +4232,8 @@ body:has(.dashboard-gallery) {
   .public-hero { grid-template-columns: 1fr; gap: 48px; padding-block: 52px 60px; }
   .public-hero h1 { font-size: clamp(2.45rem, 9vw, 3.4rem); }
   .public-hero-copy > p { font-size: 16px; margin-top: 22px; }
-  .public-actions { align-items: flex-start; gap: 12px 20px; }
+  .public-actions { align-items: center; gap: 12px 8px; }
+  .public-actions .public-cta { flex: 1 1 auto; gap: 10px; padding-inline: 12px; }
   .runtime-inputs { gap: 12px; }
   .runtime-inputs span { font-size: 11px; }
   .runtime-core { padding: 22px; }

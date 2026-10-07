@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, Check, Braces, Users, Terminal } from 'lucide-react'
 import { PublicShell } from './public-shell'
 import { ToggleGroup } from './ui/surfaces'
+import { WaitlistSignup } from './waitlist-signup'
 
 const examples = {
   crm: { name: 'CRM', entities: 'Customers → Opportunities', record: 'Acme / Expansion', action: 'Open opportunity', before: 'New', after: 'Open', policy: 'Customer reference is valid', code: 'open' },
@@ -15,7 +16,7 @@ export function KernelLanding() {
   return <PublicShell>
     <main id="public-main" className="public-landing" tabIndex={-1}>
       <section className="public-hero public-container">
-        <div className="public-hero-copy"><h1>Business software.<br /><span>Built for agents, too.</span></h1><p>Kernel gives your agents the structure to build applications and the contracts to work inside them. People and agents share one runtime, with the same rules for every action.</p><div className="public-actions"><a className="public-cta" href="/docs/quickstart">Start building <ArrowRight aria-hidden="true" /></a><a className="public-text-link" href="/docs/concepts">Explore the architecture <ArrowRight aria-hidden="true" /></a></div><p className="public-hero-note">For developers and agent builders. Under active development.</p></div>
+        <div className="public-hero-copy"><h1>Business software.<br /><span>Built for agents, too.</span></h1><p>Kernel gives your agents the structure to build applications and the contracts to work inside them. People and agents share one runtime, with the same rules for every action.</p><div className="public-actions"><a className="public-cta" href="/docs/quickstart">Start building <ArrowRight aria-hidden="true" /></a><a className="public-cta public-cta-outline" href="#waitlist">Join the waitlist <ArrowRight aria-hidden="true" /></a><a className="public-text-link" href="/docs/concepts">Explore the architecture <ArrowRight aria-hidden="true" /></a></div><p className="public-hero-note">For developers and agent builders. Under active development.</p></div>
         <div className="runtime-map" role="group" aria-label="People and agents share Kernel's definitions, validation, and records">
           <div className="runtime-inputs"><div><Users aria-hidden="true" /><strong>People</strong><span>Forms · queues · review</span></div><div><Terminal aria-hidden="true" /><strong>Agents</strong><span>MCP · HTTP · assistant</span></div></div>
           <div className="runtime-connections" aria-hidden="true"><span /><span /></div>
@@ -24,6 +25,7 @@ export function KernelLanding() {
           <p className="runtime-caption">Models propose work. The runtime decides what can run.</p>
         </div>
       </section>
+      <WaitlistSignup />
       <section className="public-architecture public-container" id="architecture">
         <div className="public-section-heading"><h2>The application is the contract.</h2><p>Define the business once. Give people a working interface and agents a structured way to use it.</p></div>
         <div className="public-contract-rows">
