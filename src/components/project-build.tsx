@@ -162,7 +162,7 @@ export function ProjectBuild({ projectSlug }: { projectSlug: string }) {
   if (!session.data) return <Navigate to="/login" search={{ mode: 'login' }} />
   if (!snapshot) {
     return error
-      ? <main className="auth-page"><Alert variant="danger">{error}</Alert><p><Link to="/workspace">Back to projects</Link></p></main>
+      ? <main className="auth-page"><h1>Configuration could not be loaded</h1><Alert variant="danger">{error}</Alert><Button disabled={busy} onPress={() => void run('Configuration loaded.', async () => { await refresh() })}>{busy ? <Spinner data-icon="inline-start" /> : null}Try again</Button><p><Link to="/workspace">Back to applications</Link></p></main>
       : <LoadingShell />
   }
 

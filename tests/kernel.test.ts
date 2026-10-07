@@ -954,6 +954,7 @@ test('saved views publish with namespaced navigation and view-only revisions pre
   next.layouts[0].sections[0].when = { field: 'status', operator: 'eq', value: 'approved' }
   next.views[0].name = 'Purchases to review'
   next.navigation.reverse()
+  next.navigation[0].icon = 'contact'
   next.startView = 'active'
   const saved = await kernel.saveDraft(human, { id: edit.id, expectedVersion: edit.version, brief: edit.brief, definition: next, source: 'manual' })
   const preview = await kernel.previewMigration(human, saved.id, saved.version)
@@ -963,6 +964,7 @@ test('saved views publish with namespaced navigation and view-only revisions pre
   await kernel.publishDraft(human, saved.id, saved.version, preview.token)
   const after = await kernel.snapshot(human, slug)
   assert.equal(after.project?.presentation?.navigation[0].entity, `${slug}__suppliers`)
+  assert.equal(after.project?.presentation?.navigation[0].icon, 'contact')
   assert.equal(after.project?.presentation?.views[0].name, 'Purchases to review')
   assert.equal(after.project?.presentation?.layouts[0].entity, `${slug}__requests`)
   assert.equal(after.project?.presentation?.layouts[0].sections[0].name, 'Review evidence')
@@ -1302,7 +1304,7 @@ test('MCP custom definitions support discovery, reviewed operation and additive 
       return reply.structuredContent as T
     }
     const { contract } = await call<{ contract: ReturnType<typeof import('../src/kernel/application-contract').applicationContract> }>('get_application_contract')
-    assert.equal(contract.version, 8)
+    assert.equal(contract.version, 9)
     assert.equal(contract.schema.type, 'object')
     assert.equal(contract.limits.entities, 8)
     assert.ok(contract.semantics.relationships.includes('record IDs'))

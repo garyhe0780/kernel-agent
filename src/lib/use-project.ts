@@ -9,6 +9,7 @@ export function useProject(projectSlug: string) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const operationInProgress = useRef(false)
   const keys = useRef(new Map<string, string>())
   const limits = useRef<Record<string, number>>({})
 
@@ -22,16 +23,18 @@ export function useProject(projectSlug: string) {
 
   async function loadMore(capability: string) {
     const page = snapshot?.recordPages?.[capability]
-    if (!page || page.loaded >= page.total) return
+    if (!page || page.loaded >= page.total || operationInProgress.current) return
+    operationInProgress.current = true
     limits.current = { ...limits.current, [capability]: Math.min(snapshotRecordLimits.max, page.loaded + snapshotRecordLimits.page) }
     setBusy(true)
     try { await refresh() }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load more records.') }
-    finally { setBusy(false) }
+    finally { operationInProgress.current = false; setBusy(false) }
   }
 
   useEffect(() => {
     limits.current = {}
+    setSnapshot(null)
     if (!session.data) {
       setSnapshot(null)
       return
@@ -45,6 +48,8 @@ export function useProject(projectSlug: string) {
   }, [session.data?.user.id, projectSlug])
 
   async function run(label: string, work: () => Promise<void>) {
+    if (operationInProgress.current) return
+    operationInProgress.current = true
     setBusy(true)
     setError('')
     try {
@@ -55,6 +60,7 @@ export function useProject(projectSlug: string) {
       setError(message)
       toast.error(message)
     } finally {
+      operationInProgress.current = false
       setBusy(false)
     }
   }

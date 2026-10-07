@@ -636,6 +636,18 @@
       "**Don't** turn queue rows or inspector sections into a grid of elevated decorative cards.",
       "**Don't** imply a connected or autonomous model with success styling.",
       "**Don't** use the near-white shadcn muted background token for secondary text; use the quiet text token."
-    ]
+    ],
+    "recordQueueReview": {
+      "mode": "Operate",
+      "contentBreakpoint": "1110px",
+      "inspectorWidth": "420px",
+      "scrollModel": "Natural queue height; viewport-bounded inspector body with persistent header, semantic tabs, and action footer.",
+      "identity": "Title and status appear in the inspector header; workflow evidence leads the body.",
+      "longText": "Populated long text fields span the inspector; empty values retain compact label/value layout.",
+      "statusColumn": "Omitted only when a saved view explicitly filters status by equality.",
+      "selectionReferenceColor": "nav-active-ink",
+      "reviewGuards": "Permission, busy state, record version and definition version remain required.",
+      "assistantFrame": "Assistant and record details share inspector width and viewport-bounded height; task/run details scroll between a persistent heading and Plan task footer. Stable page scrollbar gutter preserves queue geometry when switching."
+    }
   }
 }

@@ -220,3 +220,82 @@ Ran exactly once: `.agents/skills/impeccable/scripts/impeccable detect --json sr
 
 ## Run notes
 Fresh temporary tab ID 1 owned by Assessment B, closed. Viewport overrides 390×844, 375×667; reset to default 1280×720 before close. Mutable injection unavailable: advertised evaluate is read-only. No overlay attempted or claimed; no live-server started. Fallback evidence is CLI JSON plus DOM/AX/screenshots. Ignore file absent. No code edits, saved draft edits, credentials, publishing, staging or server changes. /tmp report and detector JSON intentionally retained for parent synthesis/cleanup.
+
+
+# Sales CRM audit and fixes — 7 October 2026
+
+Target: `http://localhost:3000/p/app-cmul5sbbs000552iam4hb3tyj`. User authorized both audit and fixes, including every application page. The approved Operations desk identity is retained. Existing unrelated worktree changes are preserved.
+
+## Implementation integrity verdict
+
+**Pass for the scoped CRM components.** Entity-specific navigation, saved-view rules, pipeline stages, linked records, real status totals, policy evidence and human review express an operational CRM. No decorative metrics or connected-model claims were introduced. The implementation uses the existing React Aria controls, desk tokens, Inter typography and compact list/detail structure.
+
+The detector ran once across the changed surfaces and shared stylesheet: **189 findings (7 warnings, 182 advisories), all in CSS; zero component findings**. Five warnings flag the already-approved Inter font and are false positives against the pinned design contract. Two flag existing SFMono code/credential text. The advisory set mostly describes existing typography/radius drift; the three newly introduced 14px/16px responsive steps are intentional mobile readability/form exceptions documented in DESIGN.md. This audit does not assert that the entire 5,000-line stylesheet is free of drift. Raw evidence: `validation/crm-audit/detector.json`.
+
+## Audit health score
+
+These are provisional post-fix engineering assessments of source and synthetic browser coverage, not WCAG certification or authenticated integration results.
+
+| Dimension | Score | Evidence and remaining limit |
+| --- | --- | --- |
+| Accessibility | 3/4 | Named keyboard-scroll regions, headings, chart text alternatives, explicit required labels and focus restoration. No screen-reader session or exhaustive contrast measurement. |
+| Performance | 3/4 | Overview is lazy-loaded; relationship search indexes and pending-record membership are memoized. No large-dataset or network performance benchmark. |
+| Responsive design | 3/4 | All 16 record destinations checked at 1440×900 and 390×844 without root horizontal overflow; wide data stays locally scrollable. Physical touch and virtual keyboards untested. |
+| Theming | 3/4 | Scoped corrections use desk tokens and preserve the approved light workplace. No dark-theme claim; existing global CSS drift remains. |
+| Implementation integrity | 3/4 | Coherent CRM-specific content and truthful synthetic/disconnected states; detector dispositions above remain documented. |
+| **Total** | **15/20 — Good** | Scoped fixes verified; authenticated live coverage remains blocked on sign-in. |
+
+## Resolved findings
+
+**12 grouped findings: 0 P0, 2 P1, 10 P2, 0 P3.** These are findings addressed by this change, not twelve independently measured standards violations. WCAG references identify the applicable check where relevant.
+
+| Priority / category | Location | Impact and correction | Relevant check / workflow |
+| --- | --- | --- | --- |
+| P1 · Accessibility | `record-board.tsx`, `account-members.tsx`, `styles.css` | Pipeline stages and wide membership data lacked an explicit keyboard scroll target. Named, focusable regions now show a visible focus outline; ArrowRight scroll was exercised on the board. | WCAG 2.1.1 / 2.4.7; harden |
+| P1 · Responsive | `record-overview.tsx`, `record-board.tsx`, `styles.css` | Long amounts and names could squeeze or overflow grid children. Grid children now shrink safely, values wrap, and stats use adaptive columns. A $987,654,321 example remains contained. | WCAG 1.4.10 check; adapt |
+| P2 · Responsive | `styles.css` | Small mobile form type can trigger iOS input zoom; compact board and breadcrumb/footer targets impair touch use. Narrow/coarse-pointer controls use 16px form text, readable board type and 44px targets. This addresses implementation risk; no iOS device was exercised. | Touch sizing / form usability; adapt |
+| P2 · Usability | `record-search.ts`, `workbench-app.tsx` | Searching visible owner/account names returned no records because only stored IDs were searched. Search now includes labels for actual relationship/user fields, retaining raw IDs and values. | Recognition rather than recall; harden |
+| P2 · Hierarchy | `workbench-app.tsx`, `ui/surfaces.tsx` | Review retained an ordinary entity title and generic empty state, with irrelevant stage radios. It now has Review deals/tasks headings, a proposal-specific empty explanation, an All records exit, and no ordinary status radios. Empty board search has Clear search. | WCAG 2.4.6; clarify |
+| P2 · Recovery | `workbench-app.tsx`, `project-build.tsx`, `use-project.ts` | Fatal snapshot failures stranded users; project switching could briefly retain the previous snapshot. Load errors now offer Try again and Back to applications, reset old snapshots, and guard duplicate operations. Both retry paths were injected and recovered. | Error recovery; harden |
+| P2 · Performance | `workbench-app.tsx` | Every record page eagerly imported the chart implementation, while search repeated relationship/pending-change work. Overview now loads on demand with an announced loading state; reusable lookup maps/sets avoid repeated scans. Production output contains a separate overview chunk. | Bundle/render cost; optimize |
+| P2 · Accessibility | `record-overview.tsx` | Chart meaning depended on visual marks and entrance animation. An image description gives current status counts; the textual legend preserves counts and amounts, swatches are decorative, and the pie renders without an entrance animation or nested application role. | WCAG 1.1.1 / motion check; harden |
+| P2 · Focus / input | `application-assistant.tsx`, `workbench-app.tsx` | Assistant opening/closing and cross-entity related-record links could leave focus away from the new mobile content. Opening focuses the panel heading; closing returns to Assistant; related-record selection resets detail scroll and focuses stacked details. Task input is now multiline. | WCAG 2.4.3; harden |
+| P2 · Forms | `kernel-dialogs.tsx` | Required create/action fields were visually indistinguishable from optional ones. Text and selection labels now identify required fields, including numeric action inputs; fields accepting an empty default retain optional presentation. | WCAG 3.3.2; clarify |
+| P2 · Copy | `project-ui.ts`, `related-records.tsx`, board/overview/workbench | Naive pluralization produced Activitys and misleading linked-record wording. Shared plural labels produce Activities; linked counts use singular/plural correctly. | Language consistency; clarify |
+| P2 · Action semantics | `workbench-app.tsx` | CRM actions such as lose_new used the primary action color because the danger lookup recognized only a literal lose name. Status effects now select the existing destructive variant for lost/cancelled outcomes. Mark lost was verified as destructive. | Existing semantic color contract; polish |
+
+## Page coverage
+
+The live target redirects the audit browser to `/login?mode=login`. A sign-in request was presented to the user; no authenticated session became available. **Every item below was exercised through the actual application components with isolated synthetic fetch responses, not through the live application database.** The current source/catalog CRM was used; no live definition, records, membership, credentials, or policies were changed. Fixture mutations are blocked.
+
+| Surface | Checked |
+| --- | --- |
+| Deal saved views | Sales pipeline; My active deals; Follow up today; Overdue follow-ups; Not updated in 7+ days; Needs a next step; Follow-up dates; Closing in 90 days; Pipeline overview |
+| Entity destinations | Accounts; Contacts; Activities |
+| Task saved views | My open tasks; Tasks due today; Overdue tasks; Open tasks |
+| Records / review | Detail and Activity tabs; linked records; all five create forms; review empty state; no-match recovery; displayed-name search; keyboard board scrolling; assistant open/close and disconnected state |
+| Configure | Application, Entities, Versions, Agents, Activity; all five entity schemas; version history; agent permission form and human-review default; Test action review with synthetic 4/4 policy checks |
+| Members | All members; Groups; Group members; Permission policies; Settings, including locally contained tables |
+| Recovery | Injected first-load failures for records and configuration, then successful Try again |
+
+Record-view coverage has 32 observations (16 desktop + 16 mobile). Configuration and members coverage is recorded separately. All five create dialogs were opened/closed at both sizes without submissions. The long mobile deal dialog has an 822px wrapper in an 844px viewport and a 1252px scroll body with `overflow-y: auto`; its submission control is reachable by keyboard. Dialog content height alone is not evidence of clipping.
+
+## Verification and evidence
+
+- 230 tests passed, zero failed. Added search tests cover relationship labels, member names, Unicode, raw values, unavailable references and unrelated-record exclusion.
+- TypeScript passed; production client/server build passed. Test/build logs are saved under `validation/crm-audit/`.
+- Chromium in-app browser, emulated 1440×900 and 390×844 viewports. Root scroll width matched client width across every recorded CRM destination, configuration and membership sample.
+- Keyboard board scrolling moved the horizontal offset; assistant focus returned to its trigger; related-record focus landed on the new detail heading and reset its scroll. Review hid ordinary status controls.
+- Captures: `validation/crm-audit/desktop-pipeline.jpg`, `mobile-overview.jpg`. Structured observations: `record-pages.json`, `configuration-pages.json`, `member-pages.json`, `behavior.json`, `create-forms.json`, `recovery.json`, `final-checks.json`.
+
+## Patterns and positive findings
+
+The main problems were shared renderer concerns: visible relationship labels did not participate in search; dense desktop controls needed intentional narrow-screen behavior; alternate panels/review modes needed their own focus and empty-state rules. Corrections live in the shared components rather than duplicating each saved view.
+
+Maintain the existing React Aria dialog/tab semantics, keyboard record selection, scoped table scrolling, proposal evidence and server-enforced role/policy/version checks. The disconnected assistant remains explicit and planning is disabled without a model/grant. The Operations desk palette and density remain consistent across records, configuration and membership.
+
+## Remaining verification
+
+Authenticated live integration remains pending sign-in, including the target application's persisted definition and records. This audit does not validate provider responses, issue credentials, grant permissions, submit proposals or apply live workflow actions. Physical touch/virtual keyboard, Safari/Firefox, screen-reader use, exhaustive contrast checks, 200% text scaling and large datasets remain untested.
+
+Recommended next steps are scoped verification: `$impeccable audit` on the authenticated target and physical-device interactions once access is available; `$impeccable polish` only for concrete issues found by that pass. No broader identity redesign or unrequested global CSS cleanup is implied.

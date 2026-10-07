@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { AccountMembers } from '../../src/components/account-members'
 import { ProjectFrame } from '../../src/components/project-frame'
+import { assemblePattern, compileAssembly } from '../../src/kernel/application'
 import type { Snapshot } from '../../src/lib/client'
 import '../../src/styles.css'
 
@@ -17,6 +18,8 @@ const application = params.has('application')
 let failNextInvite = params.has('inviteFailure')
 const invitations: {id:string;email:string;role?:string;expiresAt:string}[] = []
 const workspace = { id: 'preview', name: 'Example workspace' }
+const definition = compileAssembly(assemblePattern('crm_sales')).entities.find(entity => entity.slug === 'contacts')!
+const capability = { slug: definition.slug, version: 1, definition }
 const project = {
   id: 'crm',
   slug: 'crm',
@@ -30,8 +33,8 @@ const snapshot = {
   principal: { role: 'owner', userId: 'alex', name: 'Alex Chen' },
   project,
   projects: [project],
-  capability: { definition: { entity: { label: 'Contact' } } },
-  capabilities: [],
+  capability,
+  capabilities: [capability],
   records: [],
   changes: [],
   executions: [],

@@ -38,7 +38,7 @@ export function CreateRequestDialog({ open, busy, onOpenChange, onCreate }: {
         <FieldGroup>
           <Field name="title" isRequired minLength={3} maxLength={100}><FieldLabel>Request</FieldLabel><Input /><FieldError /></Field>
           <Field name="supplier" isRequired minLength={2} maxLength={80}><FieldLabel>Supplier</FieldLabel><Input /><FieldError /></Field>
-          <Field name="amount" type="number" isRequired><FieldLabel>Amount (USD)</FieldLabel><Input step="0.01" min="0.01" /><FieldError /></Field>
+          <Field name="amount" type="number" isRequired><FieldLabel>Amount (USD) (required)</FieldLabel><Input step="0.01" min="0.01" /><FieldError /></Field>
           <Select label="Category" value={category} onChange={setCategory} options={['Software', 'Equipment', 'Services', 'Office'].map(value => ({ value, label: value }))} />
           <Field name="justification" isRequired minLength={5} maxLength={1000}><FieldLabel>Business reason</FieldLabel><Textarea /><FieldError /></Field>
           <Switch label="Supplier is already verified" checked={verified} onChange={setVerified} />
@@ -105,7 +105,7 @@ export function CreateEntityDialog({ open, definition, layout, records = [], ini
         <FieldGroup>
           {validationError || error ? <Alert variant="danger">{validationError || error}</Alert> : null}
           {fields.map(([key, field]) => {
-            if (field.format === 'user') return <Select key={key} label={field.label} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={[{ value: '', label: 'Unassigned' }, ...members.map(member => ({ value: member.id, label: member.name }))]} />
+            if (field.format === 'user') return <Select key={key} label={`${field.label}${field.required ? ' (required)' : ''}`} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={[{ value: '', label: 'Unassigned' }, ...members.map(member => ({ value: member.id, label: member.name }))]} />
             if (field.reference && initialReferences[key]) return <p key={key}><strong>{field.label}:</strong> {String(records.find(record => record.id === initialReferences[key] && record.capability === field.reference)?.data.title ?? 'Unavailable record')}</p>
             if (field.reference) {
               const selection = relationshipSelection(field, [field], definition.entity.fields, references, records, references[key] ?? '')
@@ -115,12 +115,12 @@ export function CreateEntityDialog({ open, definition, layout, records = [], ini
               return <Switch key={key} label={field.label} checked={Boolean(flags[key])} onChange={value => setFlags(current => ({ ...current, [key]: value }))} />
             }
             if (field.type === 'enum') {
-              return <Select key={key} label={field.label} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={(field.options ?? []).map(value => ({ value, label: value }))} />
+              return <Select key={key} label={`${field.label}${field.required ? ' (required)' : ''}`} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={(field.options ?? []).map(value => ({ value, label: value }))} />
             }
             if (key === 'amountCents') {
               return (
                 <Field key={key} name="amount" type="number" isRequired defaultValue={field.default === undefined ? undefined : String(Number(field.default) / 100)}>
-                  <FieldLabel>Amount (USD)</FieldLabel>
+                  <FieldLabel>Amount (USD) (required)</FieldLabel>
                   <Input step="0.01" min={(field.min ?? 0) / 100} />
                   <FieldError />
                 </Field>
@@ -129,7 +129,7 @@ export function CreateEntityDialog({ open, definition, layout, records = [], ini
             const long = field.type === 'string' && (field.max ?? 0) > 200
             return (
               <Field key={key} name={key} type={field.type === 'integer' ? 'number' : 'text'} isRequired={field.required} minLength={field.type === 'string' ? field.min : undefined} maxLength={field.type === 'string' ? field.max : undefined}>
-                <FieldLabel>{field.label}</FieldLabel>
+                <FieldLabel>{field.label}{field.required ? ' (required)' : ''}</FieldLabel>
                 {long ? <Textarea /> : <Input type={field.format === 'date' ? 'date' : undefined} min={field.type === 'integer' ? field.min : undefined} max={field.type === 'integer' ? field.max : undefined} />}
                 <FieldError />
               </Field>
@@ -205,17 +205,17 @@ export function ActionDialog({ open, actionName, record, definition, records = [
             if (field.reference) {
               const targets = actionReferenceFields(definition, action, key)
               const selection = relationshipSelection(field, targets.length ? targets : [field], definition.entity.fields, formData, records, choices[key] ?? '')
-              return <Select key={key} label={field.label} value={choices[key] ?? ''} onChange={value => { setChoices(current => ({ ...current, [key]: value })); setValidationError('') }} {...selection} />
+              return <Select key={key} label={`${field.label}${field.required ? ' (required)' : ''}`} value={choices[key] ?? ''} onChange={value => { setChoices(current => ({ ...current, [key]: value })); setValidationError('') }} {...selection} />
             }
             if (field.reference || field.format === 'user' || field.type === 'enum' || field.type === 'boolean') {
               const options = field.format === 'user' ? members.map(member => ({ value: member.id, label: member.name })) : field.reference ? records.filter(r => r.capability === field.reference).map(r => ({ value: r.id, label: String(r.data.title) })) : field.type === 'boolean' ? [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] : (field.options ?? []).map(value => ({ value, label: value }))
-              return <Select key={key} label={field.label} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={[{ value: '', label: 'Choose a value' }, ...options]} />
+              return <Select key={key} label={`${field.label}${field.required ? ' (required)' : ''}`} value={choices[key] ?? ''} onChange={value => setChoices(current => ({ ...current, [key]: value }))} options={[{ value: '', label: 'Choose a value' }, ...options]} />
             }
             const current = initial(key)
             if (field.type === 'integer') {
               return (
                 <Field key={key} name={key} type="number" isRequired={field.required} defaultValue={typeof current === 'number' ? String(key === 'amountCents' ? current / 100 : current) : undefined}>
-                  <FieldLabel>{key === 'amountCents' ? 'Amount (USD)' : field.label}</FieldLabel>
+                  <FieldLabel>{key === 'amountCents' ? 'Amount (USD)' : field.label}{field.required ? ' (required)' : ''}</FieldLabel>
                   <Input step={key === 'amountCents' ? 0.01 : 1} min={key === 'amountCents' && field.min !== undefined ? field.min / 100 : field.min} max={key === 'amountCents' && field.max !== undefined ? field.max / 100 : field.max} />
                   <FieldError />
                 </Field>
@@ -224,7 +224,7 @@ export function ActionDialog({ open, actionName, record, definition, records = [
             const long = field.type === 'string' && (field.max ?? 0) > 200
             return (
               <Field key={key} name={key} isRequired={field.required && field.default !== ''} minLength={field.min} maxLength={field.max} defaultValue={typeof current === 'string' ? current : undefined}>
-                <FieldLabel>{field.label}</FieldLabel>
+                <FieldLabel>{field.label}{field.required && field.default !== '' ? ' (required)' : ''}</FieldLabel>
                 {long ? <Textarea /> : <Input type={field.format === 'date' ? 'date' : undefined} />}
                 <FieldError />
               </Field>
@@ -237,7 +237,7 @@ export function ActionDialog({ open, actionName, record, definition, records = [
   )
 }
 
-export function RecordFields({ definition, data, records = [], showEmpty = false }: { definition: Definition; data: RecordData; records?: BusinessRecord[]; showEmpty?: boolean }) {
+export function RecordFields({ definition, data, records = [], showEmpty = false, stackLongText = false }: { definition: Definition; data: RecordData; records?: BusinessRecord[]; showEmpty?: boolean; stackLongText?: boolean }) {
   const members = useAssignmentMembers()
   return (
     <dl className="kv">
@@ -246,10 +246,11 @@ export function RecordFields({ definition, data, records = [], showEmpty = false
         if (!showEmpty && (value === undefined || value === '')) return null
         if (key === 'confidence' && data.assessed !== true) return null
         if (key === 'assessed' && value !== true) return null
+        const longText = stackLongText && value !== undefined && value !== '' && field.type === 'string' && !field.reference && !field.format && (field.max ?? 0) > 200
         return (
           <Fragment key={key}>
-            <dt>{fieldLabel(key, field.label)}</dt>
-            <dd>
+            <dt className={longText ? 'kv-text-label' : undefined}>{fieldLabel(key, field.label)}</dt>
+            <dd className={longText ? 'kv-text-value' : undefined}>
               {value === undefined || value === '' ? 'Not set' : field.format === 'user' ? memberLabel(members, value) : field.reference ? String(records.find(r => r.id === value)?.data.title ?? value)
                 : key === 'amountCents' ? money(value)
                 : key === 'confidence' || field.format === 'percent' ? `${value}%`
@@ -265,7 +266,29 @@ export function RecordFields({ definition, data, records = [], showEmpty = false
   )
 }
 
-export function PendingApply({ record, proposal, definition, definitionVersion, records = [], busy, canReview, onReject, onApply }: {
+type PendingReviewProps = {
+  record?: BusinessRecord
+  proposal: Proposal
+  definitionVersion?: number
+  busy: boolean
+  canReview: boolean
+  onReject: () => void
+  onApply: () => void
+}
+
+function proposalIsStale({ record, proposal, definitionVersion }: Pick<PendingReviewProps, 'record' | 'proposal' | 'definitionVersion'>) {
+  return (definitionVersion !== undefined && definitionVersion !== proposal.definitionVersion) || (proposal.kind !== 'create' && (!record || record.version !== proposal.recordVersion))
+}
+
+export function PendingReviewActions(props: PendingReviewProps) {
+  const { proposal, busy, canReview, onReject, onApply } = props
+  return canReview ? <div className="actions">
+    <Button variant="outline" disabled={busy} onPress={onReject}>Reject proposal</Button>
+    <Button disabled={busy || proposalIsStale(props)} onPress={onApply}>{busy ? <Spinner data-icon="inline-start" /> : null}{proposal.kind === 'create' ? 'Create reviewed record' : 'Apply reviewed change'}</Button>
+  </div> : <p className="muted">An owner must apply this change.</p>
+}
+
+export function PendingApply({ record, proposal, definition, definitionVersion, records = [], busy, canReview, onReject, onApply, hideActions = false }: {
   record?: BusinessRecord
   proposal: Proposal
   definition: Definition
@@ -275,12 +298,13 @@ export function PendingApply({ record, proposal, definition, definitionVersion, 
   canReview: boolean
   onReject: () => void
   onApply: () => void
+  hideActions?: boolean
 }) {
   const action = definition.actions.find(item => item.name === proposal.action)
   const fields = Object.fromEntries(Object.entries(definition.entity.fields).filter(([key]) => proposal.before[key] !== proposal.after[key]))
   const changed = { ...definition, entity: { ...definition.entity, fields } }
   const creating = proposal.kind === 'create'
-  const stale = (definitionVersion !== undefined && definitionVersion !== proposal.definitionVersion) || (!creating && (!record || record.version !== proposal.recordVersion))
+  const stale = proposalIsStale({ record, proposal, definitionVersion })
   return (
     <section className="pending-panel" aria-label="Review proposed change">
       <h3>{creating ? `Create ${definition.entity.label.toLowerCase()}: ${proposal.after.title}` : `Review ${action?.label.toLowerCase() ?? proposal.action}`}</h3>
@@ -295,10 +319,7 @@ export function PendingApply({ record, proposal, definition, definitionVersion, 
       {Object.keys(proposal.input ?? {}).length ? <details><summary>Submitted information</summary><RecordFields definition={{ ...definition, entity: { ...definition.entity, fields: creating ? Object.fromEntries(Object.entries(definition.entity.fields).filter(([, field]) => field.editable)) : action?.input ?? {} } }} data={proposal.input ?? {}} records={records} showEmpty /></details> : null}
       <details><summary>Policy checks ({proposal.checks.filter(check => check.passed).length}/{proposal.checks.length} passed)</summary>{proposal.checks.map(check => <div className="check" key={check.id}><span>{check.label}: {check.message}</span><Badge variant={check.passed ? 'success' : 'danger'}>{check.passed ? 'Passed' : 'Blocked'}</Badge></div>)}</details>
       <p>{creating ? "Approval creates this record once. The server rechecks permission, definition version, field values and relationships." : `Applying commits these changes to ${String(record?.data.title)}. The server rechecks access, versions and policies.`}</p>
-      {canReview ? <div className="actions">
-        <Button variant="outline" disabled={busy} onPress={onReject}>Reject proposal</Button>
-        <Button disabled={busy || stale} onPress={onApply}>{busy ? <Spinner data-icon="inline-start" /> : null}{creating ? "Create reviewed record" : "Apply reviewed change"}</Button>
-      </div> : <p className="muted">An owner must apply this change.</p>}
+      {hideActions ? null : <PendingReviewActions record={record} proposal={proposal} definitionVersion={definitionVersion} busy={busy} canReview={canReview} onReject={onReject} onApply={onApply} />}
     </section>
   )
 }

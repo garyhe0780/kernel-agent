@@ -1,0 +1,12 @@
+[
+  {
+    "screen": "records",
+    "recovered": true,
+    "before": true
+  },
+  {
+    "screen": "configure",
+    "recovered": true,
+    "before": true
+  }
+]

@@ -1,0 +1,338 @@
+[
+  {
+    "size": "desktop",
+    "destination": "Sales pipeline",
+    "heading": "Sales pipeline",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "My active deals",
+    "heading": "My active deals",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Follow up today",
+    "heading": "Follow up today",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Overdue follow-ups",
+    "heading": "Overdue follow-ups",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Not updated in 7+ days",
+    "heading": "Not updated in 7+ days",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Needs a next step",
+    "heading": "Needs a next step",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Follow-up dates",
+    "heading": "Follow-up dates",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Closing in 90 days",
+    "heading": "Closing in 90 days",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Pipeline overview",
+    "heading": "Pipeline overview",
+    "layout": {
+      "scroll": 1425,
+      "width": 1440
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Accounts",
+    "heading": "Active accounts",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Contacts",
+    "heading": "Contacts",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "My open tasks",
+    "heading": "My open tasks",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Tasks due today",
+    "heading": "Tasks due today",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Overdue tasks",
+    "heading": "Overdue tasks",
+    "layout": {
+      "scroll": 1425,
+      "width": 1440
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Open tasks",
+    "heading": "Open tasks",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "desktop",
+    "destination": "Activities",
+    "heading": "Activity log",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Sales pipeline",
+    "heading": "Sales pipeline",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "My active deals",
+    "heading": "My active deals",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Follow up today",
+    "heading": "Follow up today",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Overdue follow-ups",
+    "heading": "Overdue follow-ups",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Not updated in 7+ days",
+    "heading": "Not updated in 7+ days",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Needs a next step",
+    "heading": "Needs a next step",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Follow-up dates",
+    "heading": "Follow-up dates",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Closing in 90 days",
+    "heading": "Closing in 90 days",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Pipeline overview",
+    "heading": "Pipeline overview",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Accounts",
+    "heading": "Active accounts",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Contacts",
+    "heading": "Contacts",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "My open tasks",
+    "heading": "My open tasks",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Tasks due today",
+    "heading": "Tasks due today",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Overdue tasks",
+    "heading": "Overdue tasks",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Open tasks",
+    "heading": "Open tasks",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  },
+  {
+    "size": "mobile",
+    "destination": "Activities",
+    "heading": "Activity log",
+    "layout": {
+      "focus": "main-content",
+      "scroll": 375,
+      "width": 375
+    },
+    "hasError": false
+  }
+]

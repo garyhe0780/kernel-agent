@@ -4,8 +4,7 @@ import type { InspectedRun } from '@/kernel/run-inspection.server'
 import { X } from 'lucide-react'
 import { request } from '@/lib/client'
 import { Button } from '@/components/ui/button'
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/form-field'
-import { Input } from '@/components/ui/input'
+import { Field, FieldGroup, FieldLabel, Textarea } from '@/components/ui/form-field'
 import { Select } from '@/components/ui/select'
 import { Alert, Badge, Spinner } from '@/components/ui/surfaces'
 
@@ -53,8 +52,9 @@ export function ApplicationAssistant({ project, owner, configured, onClose, onCh
   }
   const selected = grants.find(g => g.id === credentialId)
   const canAuto = selected?.actions.some(a => a.execution === 'automatic')
-  return <section className="desk-assistant">
-    <header><h2>Application assistant</h2><Button variant="ghost" size="icon" aria-label="Close assistant" onPress={onClose}><X /></Button></header>
+  return <section className="desk-assistant desk-inspector-panel">
+    <header><h2 tabIndex={-1}>Application assistant</h2><Button variant="ghost" size="icon" aria-label="Close assistant" onPress={onClose}><X /></Button></header>
+    <div className="desk-assistant-body" role="region" aria-label="Assistant task and run details" tabIndex={0}>
     {!owner ? <p>A workspace owner can run the assistant with a scoped application credential.</p> : <>
       <p className="muted">Choose agent access, then describe a task. The assistant can find records and plan creation or actions. Review is the default.</p>
       {!configured ? <Alert>The model is not connected. Configure it in workspace settings before submitting a task.</Alert> : null}
@@ -63,16 +63,8 @@ export function ApplicationAssistant({ project, owner, configured, onClose, onCh
         <Select label="Agent access" value={credentialId} onChange={id => { setCredentialId(id); setAutomatic('review') }} options={[{ value: '', label: 'Choose a credential' }, ...grants.map(g => ({ value: g.id, label: g.name }))]} />
         {canAuto ? <Select label="Execution" value={automatic} onChange={setAutomatic} options={[{ value: 'review', label: 'Require human review' }, { value: 'automatic', label: 'Allow granted automatic operations' }]} /> : null}
         {automatic === 'automatic' && canAuto ? <Alert variant="warning">The run may apply explicitly granted operations without review. Other operations still require approval.</Alert> : null}
-        <Field value={instruction} onChange={setInstruction} isDisabled={busy}><FieldLabel>Task</FieldLabel><Input placeholder="Find the customer and create an opportunity…" /></Field>
+        <Field value={instruction} onChange={setInstruction} isDisabled={busy}><FieldLabel>Task</FieldLabel><Textarea rows={3} placeholder="Describe the records to find and the changes to propose…" /></Field>
       </FieldGroup>
-      <Button variant="outline" disabled={!configured || !selected || busy || instruction.trim().length < 5} onPress={() => void work(async () => {
-        const identity = JSON.stringify({ credentialId, instruction, automatic })
-        const idempotencyKey = keys.current.get(identity) ?? crypto.randomUUID()
-        keys.current.set(identity, idempotencyKey)
-        const result = await request<{ explanation: string; run: Run | null }>('/api/kernel', { type: 'operate', project, credentialId, instruction, allowAutomatic: automatic === 'automatic' && Boolean(canAuto), idempotencyKey })
-        setExplanation(result.run ? `Run saved. ${result.explanation}` : result.explanation)
-        // Preserve the key until the user changes the task, including after success.
-      })}>{busy ? <Spinner data-icon="inline-start" /> : null}Plan task</Button>
       {explanation ? <><Alert>{explanation}</Alert><Button variant="ghost" disabled={busy} onPress={() => { keys.current.clear(); setInstruction(''); setExplanation('') }}>New task</Button></> : null}
       {health ? <p className="muted">{health.status === 'healthy' ? 'Run worker connected.' : health.status === 'degraded' ? 'The run worker reported a polling error. Check the worker logs.' : 'No recent worker heartbeat. Start the operation worker or use Advance run.'}{health.lastSuccessAt ? ` Last check: ${new Date(health.lastSuccessAt).toLocaleString()}.` : ''}{health.stalled ? ` ${health.stalled} queued runs need attention in this workspace.` : ''}</p> : null}
       {runs.length ? <><h3>Recent runs</h3>{runs.map(run => <div key={run.id}>
@@ -103,5 +95,16 @@ export function ApplicationAssistant({ project, owner, configured, onClose, onCh
       </div>)}</> : null}
     </>}
     {error ? <Alert variant="warning">{error}</Alert> : null}
+    </div>
+    {owner ? <footer className="desk-detail-actions" aria-label="Assistant actions">
+      <Button variant="outline" disabled={!configured || !selected || busy || instruction.trim().length < 5} onPress={() => void work(async () => {
+        const identity = JSON.stringify({ credentialId, instruction, automatic })
+        const idempotencyKey = keys.current.get(identity) ?? crypto.randomUUID()
+        keys.current.set(identity, idempotencyKey)
+        const result = await request<{ explanation: string; run: Run | null }>('/api/kernel', { type: 'operate', project, credentialId, instruction, allowAutomatic: automatic === 'automatic' && Boolean(canAuto), idempotencyKey })
+        setExplanation(result.run ? `Run saved. ${result.explanation}` : result.explanation)
+        // Preserve the key until the user changes the task, including after success.
+      })}>{busy ? <Spinner data-icon="inline-start" /> : null}Plan task</Button>
+    </footer> : null}
   </section>
 }

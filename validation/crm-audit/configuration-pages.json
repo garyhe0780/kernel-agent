@@ -1,0 +1,159 @@
+[
+  {
+    "size": "desktop",
+    "entity": "Deals",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "tables": 1
+  },
+  {
+    "size": "desktop",
+    "entity": "Accounts",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "tables": 1
+  },
+  {
+    "size": "desktop",
+    "entity": "Contacts",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "tables": 1
+  },
+  {
+    "size": "desktop",
+    "entity": "Tasks",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "tables": 1
+  },
+  {
+    "size": "desktop",
+    "entity": "Activities",
+    "layout": {
+      "scroll": 1425,
+      "width": 1425
+    },
+    "tables": 1
+  },
+  {
+    "size": "desktop",
+    "tab": "Application",
+    "layout": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "size": "desktop",
+    "tab": "Versions",
+    "layout": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "size": "desktop",
+    "tab": "Agents",
+    "layout": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "size": "desktop",
+    "tab": "Activity",
+    "layout": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "size": "mobile",
+    "tab": "Application",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "tab": "Versions",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "tab": "Agents",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "tab": "Activity",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "tab": "Entities",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Deals",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Accounts",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Contacts",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Tasks",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Activities",
+    "layout": {
+      "scroll": 375,
+      "width": 375
+    }
+  }
+]

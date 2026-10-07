@@ -14,6 +14,11 @@ export function statusLabel(status: string) {
   return status.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
 }
 
+export function pluralLabel(label: string) {
+  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`
+  return label.endsWith('s') ? label : `${label}s`
+}
+
 export function severityVariant(severity: string) {
   if (severity === 'Critical' || severity === 'High') return 'danger' as const
   if (severity === 'Medium') return 'warning' as const

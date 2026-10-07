@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { RecordLayout } from './application-layouts'
 import type { Definition, Field, RecordData } from './definition'
 import { workingGrammars } from './grammars'
+import { inferNavigationIcon, navigationIcons } from './navigation-icons'
 
 const id = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
 export const savedViewSchema = z.object({
@@ -12,12 +13,13 @@ export const savedViewSchema = z.object({
   sort: z.object({ field: z.string().min(1).max(50), direction: z.enum(['asc', 'desc']) }).strict().default({ field: '$createdAt', direction: 'desc' }),
   columns: z.array(z.string().min(1).max(50)).max(8).default([]),
 }).strict()
-export const navigationItemSchema = z.object({ entity: id, label: z.string().trim().min(2).max(60) }).strict()
+export const navigationItemSchema = z.object({ entity: id, label: z.string().trim().min(2).max(60), icon: z.enum(navigationIcons).optional() }).strict()
 export type SavedView = z.infer<typeof savedViewSchema>
 export type NavigationItem = z.infer<typeof navigationItemSchema>
 export type ApplicationPresentation = { layouts: RecordLayout[]; views: SavedView[]; navigation: NavigationItem[]; startView: string | null }
 export function applicationPresentation(app: { entities: Definition[]; layouts?: RecordLayout[]; views?: SavedView[]; navigation?: NavigationItem[]; startView?: string | null }): ApplicationPresentation {
-  return { layouts: app.layouts ?? [], views: app.views ?? [], navigation: app.navigation?.length ? app.navigation : app.entities.map(e => ({ entity: e.slug, label: e.entity.label.endsWith('s') ? e.entity.label : `${e.entity.label}s` })), startView: app.startView ?? null }
+  const navigation: NavigationItem[] = app.navigation?.length ? app.navigation : app.entities.map(e => ({ entity: e.slug, label: e.entity.label.endsWith('s') ? e.entity.label : `${e.entity.label}s` }))
+  return { layouts: app.layouts ?? [], views: app.views ?? [], navigation: navigation.map(item => ({ ...item, icon: item.icon ?? inferNavigationIcon(app.entities.find(entity => entity.slug === item.entity)) })), startView: app.startView ?? null }
 }
 export type ViewContext = { userId?: string; now?: Date; updatedAt?: string | Date }
 export function calendarDate(value: Date | string, timeZone = 'UTC') {

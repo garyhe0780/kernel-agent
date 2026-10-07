@@ -40,6 +40,8 @@ export function WorkspaceHome({
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const [workLoaded, setWorkLoaded] = useState(false);
+  const [workError, setWorkError] = useState("");
+  const [workAttempt, setWorkAttempt] = useState(0);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [model, setModel] = useState({
     configured: false,
@@ -60,26 +62,28 @@ export function WorkspaceHome({
   useEffect(() => {
     if (!owner) return;
     let cancelled = false;
-    request<{ drafts: Draft[]; model: typeof model }>("/api/kernel?drafts=1")
-      .then(async (data) => {
+    setWorkLoaded(false);
+    setWorkError("");
+    setDrafts([]);
+    setPlans([]);
+    Promise.all([
+      request<{ drafts: Draft[]; model: typeof model }>("/api/kernel?drafts=1"),
+      request<BuilderPlan[]>("/api/kernel?plans=1"),
+    ])
+      .then(([data, nextPlans]) => {
         if (cancelled) return;
         setDrafts(data.drafts);
         setModel(data.model);
-        setPlans(await request<BuilderPlan[]>("/api/kernel?plans=1"));
+        setPlans(nextPlans);
         setWorkLoaded(true);
       })
-      .catch((caught) => {
-        if (!cancelled)
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : "Unable to load saved work.",
-          );
+      .catch(() => {
+        if (!cancelled) setWorkError("Saved work could not be loaded.");
       });
     return () => {
       cancelled = true;
     };
-  }, [snapshot.principal.userId, snapshot.principal.role, owner]);
+  }, [snapshot.workspace.id, snapshot.principal.userId, owner, workAttempt]);
 
   useEffect(() => {
     if (!assemble || !owner) return;
@@ -192,6 +196,17 @@ export function WorkspaceHome({
         }
       >
         {error ? <Alert variant="danger">{error}</Alert> : null}
+        {workError && view === "applications" ? (
+          <Alert variant="danger">
+            <p>{workError}</p>
+            <Button
+              variant="outline"
+              onPress={() => setWorkAttempt((attempt) => attempt + 1)}
+            >
+              Try again
+            </Button>
+          </Alert>
+        ) : null}
         {building ? (
           <ApplicationStudio
             key={planId ?? draft?.id ?? seedModules?.join(",") ?? "new"}
@@ -221,7 +236,8 @@ export function WorkspaceHome({
             plans={savedPlans}
             owner={owner}
             loaded={workLoaded}
-            failed={Boolean(error)}
+            failed={Boolean(workError)}
+            onRetry={() => setWorkAttempt((attempt) => attempt + 1)}
             busy={busy}
             onCreate={() => {
               setDraft(undefined);

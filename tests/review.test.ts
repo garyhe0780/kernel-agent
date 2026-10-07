@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { PendingApply } from '../src/components/kernel-dialogs'
+import { PendingApply, PendingReviewActions } from '../src/components/kernel-dialogs'
 import { CapabilitySettings } from '../src/components/project-build'
 import { procurement } from '../src/kernel/procurement'
 import type { BusinessRecord, Proposal } from '../src/lib/client'
@@ -29,6 +29,32 @@ test('stale record review disables apply while leaving rejection available', () 
   assert.match(html, /record changed after the proposal/)
   assert.match(html, /<button[^>]*disabled[^>]*>Apply reviewed change/)
   assert.doesNotMatch(html, /<button[^>]*disabled[^>]*>Reject proposal/)
+})
+
+test('persistent review actions retain record and definition version guards', () => {
+  const base = { record, proposal, definitionVersion: 1, busy: false, canReview: true, onReject() {}, onApply() {} }
+  for (const props of [{ ...base, record: { ...record, version: 2 } }, { ...base, definitionVersion: 2 }]) {
+    const html = renderToStaticMarkup(createElement(PendingReviewActions, props))
+    assert.match(html, /<button[^>]*disabled[^>]*>Apply reviewed change/)
+    assert.doesNotMatch(html, /<button[^>]*disabled[^>]*>Reject proposal/)
+  }
+  const ready = renderToStaticMarkup(createElement(PendingReviewActions, base))
+  assert.doesNotMatch(ready, /<button[^>]*disabled[^>]*>Apply reviewed change/)
+})
+
+test('persistent review actions respect reviewer permission and in-flight work', () => {
+  const base = { record, proposal, definitionVersion: 1, busy: false, canReview: true, onReject() {}, onApply() {} }
+  const readOnly = renderToStaticMarkup(createElement(PendingReviewActions, { ...base, canReview: false }))
+  assert.match(readOnly, /An owner must apply this change/)
+  assert.doesNotMatch(readOnly, /<button/)
+  const busy = renderToStaticMarkup(createElement(PendingReviewActions, { ...base, busy: true }))
+  assert.equal((busy.match(/<button[^>]*disabled/g) ?? []).length, 2)
+})
+
+test('moving review actions to the footer preserves before/after and policy evidence', () => {
+  const html = renderToStaticMarkup(createElement(PendingApply, { record, proposal, definition: procurement, hideActions: true, busy: false, canReview: true, onReject() {}, onApply() {} }))
+  for (const evidence of ['Purchasing assistant', 'Before', 'Proposed', 'Spending limit', 'Within the approved ceiling']) assert.ok(html.includes(evidence))
+  assert.doesNotMatch(html, /<button/)
 })
 
 test('capability settings render published keys without purchasing-specific fields', () => {

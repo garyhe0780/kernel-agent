@@ -177,7 +177,7 @@ export function AccountMembers({
     </div>
   )
   const table = (members: Member[], inGroup = false) => (
-    <div className="members-table-wrap">
+    <div className="members-table-wrap" role="region" aria-label={inGroup ? 'Group members' : project ? 'Application members' : 'Workspace members'} tabIndex={0}>
       <table className="members-table">
         <thead>
           <tr>
@@ -636,7 +636,7 @@ export function AccountMembers({
                           Policies grant access to everyone in this group.
                           Direct roles and other group policies still apply.
                         </p>
-                        <div className="members-table-wrap">
+                        <div className="members-table-wrap" role="region" aria-label="Group permission policies" tabIndex={0}>
                           <table className="members-table">
                             <thead>
                               <tr>
@@ -868,7 +868,7 @@ export function AccountMembers({
                         setNotice('')
                         setForm('group')
                       })}
-                      <div className="members-table-wrap">
+                      <div className="members-table-wrap" role="region" aria-label="Member groups" tabIndex={0}>
                         <table className="members-table">
                           <thead>
                             <tr>

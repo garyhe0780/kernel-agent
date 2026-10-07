@@ -1,0 +1,33 @@
+[
+  {
+    "check": "Search displayed names",
+    "query": "Alex Chen",
+    "rows": 1
+  },
+  {
+    "check": "Search displayed names",
+    "query": "Northstar Operations",
+    "rows": 1
+  },
+  {
+    "check": "Search displayed names",
+    "query": "Annual subscription",
+    "rows": 1
+  },
+  {
+    "check": "Assistant focus",
+    "value": "Application assistant"
+  },
+  {
+    "check": "Assistant close focus",
+    "value": "Assistant"
+  },
+  {
+    "check": "Keyboard pipeline scroll",
+    "value": {
+      "left": 40,
+      "scroll": 1660,
+      "width": 695
+    }
+  }
+]

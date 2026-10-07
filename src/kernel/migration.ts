@@ -58,7 +58,7 @@ export function planMigration(beforeRaw: unknown, afterRaw: unknown, projectSlug
     return `${view.name} · Timezone: ${view.timeZone ?? 'UTC'} · ${entity.entity.label} · ${filters} · Sort: ${view.sort.field === '$createdAt' ? 'Created time' : entity.entity.fields[view.sort.field].label} ${view.sort.direction === 'asc' ? 'ascending' : 'descending'} · Columns: ${view.columns.length ? view.columns.map(key => entity.entity.fields[key].label).join(', ') : 'Default'}`
   }
   for (const id of new Set([...before.views.map(view => view.id), ...after.views.map(view => view.id)])) change('Application', `View: ${after.views.find(view => view.id === id)?.name ?? before.views.find(view => view.id === id)?.name}`, describeView(before, id), describeView(after, id))
-  const describeNavigation = (app: Application) => applicationPresentation(app).navigation.map(item => `${item.label} (${app.entities.find(entity => entity.slug === item.entity)?.entity.label})`).join(' → ')
+  const describeNavigation = (app: Application) => applicationPresentation(app).navigation.map(item => `${item.label} (${app.entities.find(entity => entity.slug === item.entity)?.entity.label}; icon: ${item.icon})`).join(' → ')
   change('Application', 'Navigation', describeNavigation(before), describeNavigation(after))
   change('Application', 'Starting view', before.views.find(view => view.id === before.startView)?.name ?? 'All records', after.views.find(view => view.id === after.startView)?.name ?? 'All records')
   const describeLayout = (app: Application, slug: string) => {

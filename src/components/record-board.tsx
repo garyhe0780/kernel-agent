@@ -1,12 +1,7 @@
 import { useAssignmentMembers, memberLabel } from './record-context'
 import type { Definition, RecordData } from '@/kernel/definition'
 import { money, shortId } from '@/lib/client'
-import { statusLabel } from '@/lib/project-ui'
-
-function plural(label: string) {
-  if (label.endsWith('s')) return label
-  return `${label}s`
-}
+import { pluralLabel as plural, statusLabel } from '@/lib/project-ui'
 
 export function RecordBoard({
   columns,
@@ -28,14 +23,14 @@ export function RecordBoard({
   const noun = definition.entity.label.toLowerCase()
   const amountKey = (columns ?? []).find(key => key.endsWith('Cents') && definition.entity.fields[key]?.type === 'integer')
   return (
-    <div className="record-board" role="region" aria-label={`${plural(definition.entity.label)} board`}>
+    <div className="record-board" role="region" aria-label={`${plural(definition.entity.label)} board. Scroll horizontally to see all stages.`} tabIndex={0}>
       {statuses.map(value => {
         const column = records.filter(record => record.data.status === value)
         const total = amountKey ? column.reduce((sum, record) => sum + (typeof record.data[amountKey] === 'number' ? record.data[amountKey] as number : 0), 0) : 0
         return (
           <section className="record-board-column" key={value} aria-label={statusLabel(value)}>
             <header>
-              <h3>{statusLabel(value)}</h3>
+              <h2>{statusLabel(value)}</h2>
               <span>{column.length}{amountKey && column.length ? ` · ${money(total)}` : ''}</span>
             </header>
             {column.length === 0 ? <p className="muted">No {plural(noun)}.</p> : column.map(record => (

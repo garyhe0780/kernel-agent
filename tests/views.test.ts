@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { purchasingExample, validateApplication } from '../src/kernel/application'
+import { assemblePattern, compileAssembly, purchasingExample, validateApplication } from '../src/kernel/application'
 import { applicationPresentation, matchesView, sortViewRecords } from '../src/kernel/application-views'
+import { inferNavigationIcon } from '../src/kernel/navigation-icons'
+import { applicationContract } from '../src/kernel/application-contract'
+import { planMigration } from '../src/kernel/migration'
 import { crm } from '../src/kernel/suite'
 
 test('old application definitions receive compatible navigation without adding views', () => {
@@ -11,6 +14,42 @@ test('old application definitions receive compatible navigation without adding v
   assert.deepEqual(restored.views, [])
   assert.equal(restored.startView, null)
   assert.deepEqual(applicationPresentation(restored).navigation.map(item => item.entity), ['requests', 'suppliers'])
+})
+
+test('business navigation icons cover catalog applications without relying on display labels', () => {
+  for (const [pattern, expected] of [
+    ['purchasing', ['purchase', 'organization']],
+    ['crm_sales', ['deal', 'organization', 'contact', 'task', 'activity']],
+    ['issues', ['issue', 'project', 'people']],
+    ['payments', ['payment', 'organization']],
+    ['support', ['ticket', 'organization']],
+  ] as const) {
+    const app = compileAssembly(assemblePattern(pattern))
+    const before = structuredClone(app)
+    assert.deepEqual(applicationPresentation(app).navigation.map(item => item.icon), expected, pattern)
+    assert.deepEqual(app, before, 'presentation defaults do not mutate published definitions')
+  }
+  const request = structuredClone(purchasingExample().entities[0])
+  request.slug = 'renamed__items'; request.entity.label = '采购事项'
+  assert.equal(inferNavigationIcon(request), 'purchase')
+  request.entity.name = 'custom_inspection'
+  assert.equal(inferNavigationIcon(request), 'records', 'unknown domains receive a neutral fallback')
+})
+
+test('custom icon overrides validate, survive presentation, and appear in migration previews', () => {
+  const before = purchasingExample()
+  const after = structuredClone(before)
+  after.navigation[0].icon = 'asset'
+  const parsed = validateApplication(after)
+  assert.equal(applicationPresentation(parsed).navigation[0].icon, 'asset')
+  const { report } = planMigration(before, parsed, 'icons', [], [])
+  assert.ok(report.changes.some(change => change.label === 'Navigation' && change.before.includes('icon: purchase') && change.after.includes('icon: asset')))
+  assert.equal(report.invalidatedProposals, 0)
+  assert.equal(report.canPublish, true)
+  assert.throws(() => validateApplication({ ...before, navigation: before.navigation.map(item => ({ ...item, icon: '<svg onload=alert(1)>' })) }))
+  const schema = applicationContract().schema as unknown as { properties: { navigation: { items: { properties: { icon: { enum: string[] } }; required: string[] } } } }
+  assert.ok(schema.properties.navigation.items.properties.icon.enum.includes('purchase'))
+  assert.ok(!schema.properties.navigation.items.required.includes('icon'), 'older definitions remain valid')
 })
 
 test('view validation rejects broken references, mismatched values and incomplete navigation', () => {

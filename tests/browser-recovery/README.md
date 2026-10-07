@@ -61,3 +61,14 @@ CSV export: Export CSV downloads the synthetic deal with all fields. Verify one 
 ## Application shell polish
 
 Open `/application-shell.html` for the actual WorkbenchApp with an empty Tasks view, or add `?populated` for one synthetic task and its details. Its synthetic session and fetch adapter never reach the live database; mutations return a preview-only error. Verify application switching, saved-view disclosure, entity/view navigation, breadcrumb ancestors, empty-state recovery, and mobile navigation. Tables scroll locally on narrow screens.
+
+Adaptive sidebar: `?pattern=purchasing` uses the actual purchasing presentation. Purchase requests and Suppliers each have one view and must render as single direct rows without a chevron or child row. Suppliers opens Active suppliers; its breadcrumb ancestor opens all suppliers, and the sidebar remains selected. In the CRM preview, Deals and Tasks retain multi-view disclosures while Accounts, Contacts, and Activities become direct rows. Add `&no-views` to the purchasing preview to verify direct access to entity-wide queues without saved views. At 390px, select a destination with Enter: navigation must close and focus must move to `#main-content`. Review must be the sole current sidebar item while reviewing.
+
+Semantic icons: purchasing uses a cart, suppliers a building, review a clipboard check, and account management a gear. The application mark stays a cart when navigating to Suppliers. Other catalog patterns can be previewed with `?pattern=crm_sales`, `?pattern=issues`, `?pattern=payments`, or `?pattern=support`. Check distinct entity icons, consistent 16px sidebar sizing and 1.7 stroke width, selected-color inheritance, and desktop/mobile navigation. Unit and publication tests cover icon inference, renamed/localized labels, unknown-type fallback, validated overrides, namespaced snapshots, and migration evidence.
+
+
+## Sales CRM page audit
+
+Open `/application-shell.html?audit` for the actual WorkbenchApp with validated synthetic account, contact, two deals (including a large amount), task and activity records. The fixture starts at Open tasks; navigate through every CRM destination. Add `&screen=configure` for actual ProjectBuild configuration tabs/entity schemas, or `&screen=members` for the application-member directory. Use `/members.html` for synthetic group members, permission policies and settings. `&load-failure` injects one snapshot failure, then Try again recovers.
+
+No audit requests reach the live database or model. Mutations are blocked. This checks the current source/catalog renderer, not the target application's authenticated persisted definition. Coverage and captures from the 2026-10-07 pass are in `validation/crm-audit/`; conclusions and limitations are in `docs/UI_AUDIT.md`.

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -14,7 +14,8 @@ import type { Snapshot } from "@/lib/client";
 import type { Draft } from "@/kernel/application";
 import type { BuilderPlan } from "@/kernel/builder-plan";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/surfaces";
+import { Alert, Badge, Empty } from "./ui/surfaces";
+import { cn } from "@/lib/utils";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 
 type Props = {
@@ -30,6 +31,7 @@ type Props = {
   onDraft: (draft: Draft) => void;
   onInstallDemo: () => void;
   onRemoveDemo: () => void;
+  onRetry: () => void;
 };
 
 export function WorkspaceLaunchpad({
@@ -45,20 +47,27 @@ export function WorkspaceLaunchpad({
   onDraft,
   onInstallDemo,
   onRemoveDemo,
+  onRetry,
 }: Props) {
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const search = query.trim().toLowerCase();
+  function clearSearch() {
+    setQuery("");
+    searchRef.current?.focus();
+  }
   const demo = projects.find((project) => project.demo);
   const applications = projects.filter((project) => !project.demo);
   const filtered = applications.filter((project) =>
     `${project.name} ${project.description}`
       .toLowerCase()
-      .includes(query.trim().toLowerCase()),
+      .includes(search),
   );
   const demoVisible =
     demo &&
-    `${demo.name} purchasing demo`
+    `${demo.name} ${demo.description} purchasing demo`
       .toLowerCase()
-      .includes(query.trim().toLowerCase());
+      .includes(search);
   return (
     <div className="workspace-launchpad">
       <section
@@ -68,72 +77,81 @@ export function WorkspaceLaunchpad({
         <div className="launch-section-header">
           <div>
             <h2 id="launch-apps-title">
-              Your applications <span>{applications.length}</span>
+              Your applications <Badge>{applications.length}</Badge>
             </h2>
             <p>One place for the tools your team runs on.</p>
           </div>
           {projects.length > 1 ? (
             <InputGroup className="launch-search">
-              <InputGroupAddon>
-                <Search />
-              </InputGroupAddon>
               <InputGroupInput
+                ref={searchRef}
+                type="search"
+                aria-describedby="launch-search-status"
                 aria-label="Find an application"
                 placeholder="Find an application…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
+              <InputGroupAddon>
+                <Search aria-hidden="true" />
+              </InputGroupAddon>
               {query ? (
                 <InputGroupAddon align="inline-end">
                   <Button
                     variant="ghost"
                     aria-label="Clear application search"
-                    onPress={() => setQuery("")}
+                    onPress={clearSearch}
                   >
-                    <X />
+                    <X data-icon="inline-start" aria-hidden="true" />
                   </Button>
                 </InputGroupAddon>
               ) : null}
             </InputGroup>
           ) : (
             <Link className="launch-text-link" to="/applications">
-              View applications <ArrowRight />
+              View applications <ArrowRight data-icon="inline-end" aria-hidden="true" />
             </Link>
           )}
         </div>
+        <p className="sr-only" role="status" id="launch-search-status">
+          {search
+            ? `${filtered.length + (demoVisible ? 1 : 0)} applications found.`
+            : ""}
+        </p>
         {filtered.length ? (
-          <div className="launch-app-grid">
+          <ul className="launch-app-list">
             {filtered.map((project) => (
-              <Link
-                key={project.slug}
-                className="launch-app"
-                to="/p/$projectSlug"
-                params={{ projectSlug: project.slug }}
-              >
-                <span className="launch-app-icon">
-                  <LayoutGrid />
-                </span>
-                <div>
-                  <h3>{project.name}</h3>
-                  <p>
-                    {project.description || "Open your application workspace."}
-                  </p>
+              <li key={project.slug}>
+                <Link
+                  className="launch-app"
+                  to="/p/$projectSlug"
+                  params={{ projectSlug: project.slug }}
+                >
+                  <span className="launch-app-icon">
+                    <LayoutGrid aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h3>{project.name}</h3>
+                    <p>
+                      {project.description || "Open your application workspace."}
+                    </p>
+                  </div>
                   <span className="launch-app-meta">
                     Published · Version {project.version}
                   </span>
-                </div>
-                <ArrowRight className="launch-open-arrow" />
-              </Link>
+                  <ArrowRight className="launch-open-arrow" aria-hidden="true" />
+                </Link>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : null}
         {demoVisible ? (
           <article
-            className={`launch-demo ${applications.length ? "launch-demo-compact" : ""}`}
+            className={cn("launch-demo", applications.length > 0 && "launch-demo-compact")}
           >
             <div className="launch-demo-copy">
               <span className="launch-demo-icon">
-                <Receipt />
+                <Receipt aria-hidden="true" />
               </span>
               <div>
                 <div className="launch-demo-title">
@@ -148,11 +166,11 @@ export function WorkspaceLaunchpad({
                 </p>
                 <div className="launch-demo-actions">
                   <Link
-                    className="button button-primary"
+                    className={cn("button", applications.length ? "button-outline" : "button-primary")}
                     to="/p/$projectSlug"
                     params={{ projectSlug: demo.slug }}
                   >
-                    Open purchasing demo <ArrowRight />
+                    Open purchasing demo <ArrowRight data-icon="inline-end" aria-hidden="true" />
                   </Link>
                   {owner ? (
                     <Button
@@ -172,17 +190,17 @@ export function WorkspaceLaunchpad({
                 aria-label="Purchasing demo workflow"
               >
                 <span>
-                  <FileText />
+                  <FileText aria-hidden="true" />
                   Request
                 </span>
                 <i />
                 <span>
-                  <Search />
+                  <Search aria-hidden="true" />
                   Review
                 </span>
                 <i />
                 <span>
-                  <Receipt />
+                  <Receipt aria-hidden="true" />
                   Decision
                 </span>
                 <p>Explore the workflow with sample records.</p>
@@ -190,34 +208,35 @@ export function WorkspaceLaunchpad({
             ) : null}
           </article>
         ) : null}
-        {query && !filtered.length && !demoVisible ? (
+        {search && !filtered.length && !demoVisible ? (
           <div className="launch-empty">
-            <h3>No applications match “{query}”</h3>
-            <p>Try another name or clear your search.</p>
-            <Button variant="outline" onPress={() => setQuery("")}>
-              Clear search
-            </Button>
+            <Empty title={`No applications match “${query.trim()}”`}>
+              <p>Try another name or clear your search.</p>
+              <Button variant="outline" onPress={clearSearch}>
+                Clear search
+              </Button>
+            </Empty>
           </div>
         ) : null}
-        {!projects.length ? (
+        {!projects.length && !search ? (
           <div className="launch-empty launch-first">
-            <LayoutGrid />
-            <h3>Your first business application starts here</h3>
-            <p>
-              Assemble catalog modules, describe a process, or install the
-              purchasing demo to try queues and review with sample records.
-            </p>
-            {owner ? (
-              <Button
-                variant="outline"
-                disabled={Boolean(busy)}
-                onPress={onInstallDemo}
-              >
-                {busy || "Install purchasing demo"}
-              </Button>
-            ) : (
-              <p>Ask your workspace owner to add an application.</p>
-            )}
+            <Empty title="Your first business application starts here">
+              <p>
+                Assemble catalog modules, describe a process, or install the
+                purchasing demo to try queues and review with sample records.
+              </p>
+              {owner ? (
+                <Button
+                  variant="outline"
+                  disabled={Boolean(busy)}
+                  onPress={onInstallDemo}
+                >
+                  {busy || "Install purchasing demo"}
+                </Button>
+              ) : (
+                <p>Ask your workspace owner to add an application.</p>
+              )}
+            </Empty>
           </div>
         ) : null}
       </section>
@@ -231,23 +250,26 @@ export function WorkspaceLaunchpad({
           </div>
           {!owner ? (
             <div className="launch-work-empty">
-              <FileText />
+              <FileText aria-hidden="true" />
               <div>
                 <h3>Plans and drafts are managed by your owner</h3>
                 <p>Your available applications are listed above.</p>
               </div>
             </div>
+          ) : failed ? (
+            <div className="launch-work-error">
+              <Alert variant="danger">Saved work could not be loaded.</Alert>
+              <Button variant="outline" onPress={onRetry}>
+                Try again
+              </Button>
+            </div>
           ) : !loaded ? (
-            <p className="launch-work-status" role="status">
-              {failed
-                ? "Saved work could not be loaded. Refresh the page to try again."
-                : "Loading saved work…"}
-            </p>
+            <p className="launch-work-status" role="status">Loading saved work…</p>
           ) : plans.length || drafts.length ? (
             <div className="launch-work-list">
               {plans.map((plan) => (
                 <div className="launch-work-row" key={plan.id}>
-                  <FileText />
+                  <FileText aria-hidden="true" />
                   <div>
                     <h3>
                       {plan.content.proposal?.plan.name ||
@@ -261,13 +283,13 @@ export function WorkspaceLaunchpad({
                     </p>
                   </div>
                   <Button variant="ghost" onPress={() => onPlan(plan)}>
-                    Open plan <ArrowRight />
+                    Open plan <ArrowRight data-icon="inline-end" aria-hidden="true" />
                   </Button>
                 </div>
               ))}
               {drafts.map((draft) => (
                 <div className="launch-work-row" key={draft.id}>
-                  <Boxes />
+                  <Boxes aria-hidden="true" />
                   <div>
                     <h3>{draft.definition.name}</h3>
                     <p>
@@ -278,20 +300,20 @@ export function WorkspaceLaunchpad({
                     </p>
                   </div>
                   <Button variant="ghost" onPress={() => onDraft(draft)}>
-                    Open draft <ArrowRight />
+                    Open draft <ArrowRight data-icon="inline-end" aria-hidden="true" />
                   </Button>
                 </div>
               ))}
             </div>
           ) : (
             <div className="launch-work-empty">
-              <FileText />
+              <FileText aria-hidden="true" />
               <div>
                 <h3>A place for work in progress</h3>
                 <p>Your saved plans and drafts will appear here.</p>
                 {owner ? (
                   <Button variant="ghost" onPress={onCreate}>
-                    Start an application <ArrowRight />
+                    Start an application <ArrowRight data-icon="inline-end" aria-hidden="true" />
                   </Button>
                 ) : null}
               </div>
@@ -299,16 +321,16 @@ export function WorkspaceLaunchpad({
           )}
         </section>
         <aside className="launch-catalog">
-          <Boxes />
+          <Boxes aria-hidden="true" />
           <h2>Start with the building blocks</h2>
           <p>
             Explore the catalog to find the modules for your next application.
           </p>
           <Link className="launch-text-link" to="/catalog">
-            Explore catalog <ArrowRight />
+            Explore catalog <ArrowRight data-icon="inline-end" aria-hidden="true" />
           </Link>
           <div className="launch-catalog-note">
-            <Plus />
+            <Plus aria-hidden="true" />
             Assemble around the way you work.
           </div>
         </aside>

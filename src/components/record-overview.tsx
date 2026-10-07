@@ -3,7 +3,7 @@ import { Cell, Pie, PieChart } from 'recharts'
 import { viewAggregates } from '@/kernel/aggregates'
 import type { Definition, RecordData } from '@/kernel/definition'
 import { money } from '@/lib/client'
-import { statusLabel, statusVariant } from '@/lib/project-ui'
+import { pluralLabel, statusLabel, statusVariant } from '@/lib/project-ui'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from './ui/chart'
 
 const outcomeColors = { success: 'var(--color-success)', danger: 'var(--color-danger)', warning: 'var(--color-amber)' } as const
@@ -26,7 +26,7 @@ export function RecordOverview({
 }) {
   const aggregates = viewAggregates(records, definition.entity.fields)
   const noun = definition.entity.label.toLowerCase()
-  const nouns = noun.endsWith('s') ? noun : `${noun}s`
+  const nouns = pluralLabel(noun)
   const amountKey = aggregates.sums.find(sum => sum.field.endsWith('Cents'))?.field
   const colors = statusColors(aggregates.status.map(item => item.value))
   const chartData = aggregates.status.map((item, index) => ({
@@ -75,10 +75,10 @@ export function RecordOverview({
       <div className="record-chart">
         <h2>Status</h2>
         {aggregates.count === 0 ? <p className="muted">No {nouns} yet. Counts use saved records, not a forecast.</p> : (
-          <ChartContainer config={config} className="record-chart-canvas" initialDimension={{ width: 280, height: 220 }}>
-            <PieChart>
+          <ChartContainer config={config} className="record-chart-canvas" role="img" aria-label={`${aggregates.count} ${nouns} by status. ${chartData.filter(item => item.value).map(item => `${item.name}: ${item.value}`).join('. ')}.`} initialDimension={{ width: 280, height: 220 }}>
+            <PieChart accessibilityLayer={false}>
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-              <Pie data={chartData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={80} stroke="var(--color-surface)" strokeWidth={2}>
+              <Pie isAnimationActive={false} data={chartData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={80} stroke="var(--color-surface)" strokeWidth={2}>
                 {chartData.map(item => <Cell key={item.key} fill={item.fill} />)}
               </Pie>
             </PieChart>
@@ -87,7 +87,7 @@ export function RecordOverview({
         {aggregates.count > 0 ? (
           <ul className="record-chart-legend">
             {chartData.map(item => (
-              <li key={item.key}><i style={{ background: item.fill }} />{item.name} · {item.value}{item.amount !== undefined && item.value ? ` · ${money(item.amount)}` : ''}</li>
+              <li key={item.key}><i aria-hidden="true" style={{ background: item.fill }} /><span>{item.name} · {item.value}{item.amount !== undefined && item.value ? ` · ${money(item.amount)}` : ''}</span></li>
             ))}
           </ul>
         ) : null}

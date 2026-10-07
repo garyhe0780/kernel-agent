@@ -1,0 +1,66 @@
+[
+  {
+    "page": "All members",
+    "size": "mobile",
+    "layout": {
+      "scroll": 390,
+      "width": 390
+    }
+  },
+  {
+    "page": "Groups",
+    "size": "mobile",
+    "layout": {
+      "scroll": 390,
+      "width": 390
+    }
+  },
+  {
+    "page": "Group members",
+    "size": "mobile",
+    "layout": {
+      "scroll": 390,
+      "width": 390
+    }
+  },
+  {
+    "page": "Permission policies",
+    "size": "mobile",
+    "layout": {
+      "scroll": 390,
+      "width": 390
+    }
+  },
+  {
+    "page": "Settings",
+    "size": "mobile",
+    "layout": {
+      "scroll": 390,
+      "width": 390
+    }
+  },
+  {
+    "page": "Group members",
+    "size": "desktop",
+    "layout": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "page": "Permission policies",
+    "size": "desktop",
+    "layout": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "page": "Settings",
+    "size": "desktop",
+    "layout": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  }
+]

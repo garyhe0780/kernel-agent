@@ -1,0 +1,122 @@
+[
+  {
+    "size": "desktop",
+    "entity": "Deals",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 1231,
+      "height": 1231,
+      "scroll": 1231,
+      "width": 505
+    }
+  },
+  {
+    "size": "desktop",
+    "entity": "Accounts",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 736,
+      "height": 736,
+      "scroll": 736,
+      "width": 520
+    }
+  },
+  {
+    "size": "desktop",
+    "entity": "Contacts",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 678,
+      "height": 678,
+      "scroll": 678,
+      "width": 520
+    }
+  },
+  {
+    "size": "desktop",
+    "entity": "Tasks",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 781,
+      "height": 780.5,
+      "scroll": 781,
+      "width": 520
+    }
+  },
+  {
+    "size": "desktop",
+    "entity": "Activities",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 781,
+      "height": 780.5,
+      "scroll": 781,
+      "width": 520
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Deals",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 1252,
+      "height": 1252,
+      "scroll": 1252,
+      "width": 337.5
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Accounts",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 748,
+      "height": 748,
+      "scroll": 748,
+      "width": 352.5
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Contacts",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 692,
+      "height": 691.5,
+      "scroll": 692,
+      "width": 352.5
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Tasks",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 796,
+      "height": 795.5,
+      "scroll": 796,
+      "width": 352.5
+    }
+  },
+  {
+    "size": "mobile",
+    "entity": "Activities",
+    "dialog": 1,
+    "requiredLabel": true,
+    "geometry": {
+      "client": 796,
+      "height": 795.5,
+      "scroll": 796,
+      "width": 352.5
+    }
+  }
+]

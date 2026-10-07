@@ -10,7 +10,7 @@ export function CardContent({ className, ...props }: ComponentProps<'div'>) { re
 export function CardFooter(props: ComponentProps<'footer'>) { return <footer className="card-footer" {...props} /> }
 export function Badge({ children, variant = 'neutral' }: { children: ReactNode; variant?: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' }) { return <span className={cn('badge', `badge-${variant}`)}>{children}</span> }
 export function Alert({ children, variant = 'info' }: { children: ReactNode; variant?: 'info' | 'danger' | 'warning' }) { return <div role={variant === 'danger' ? 'alert' : 'status'} className={cn('alert', `alert-${variant}`)}><AlertCircle size={18} aria-hidden="true" /><div>{children}</div></div> }
-export function Empty({ title, children }: { title: string; children?: ReactNode }) { return <div className="empty"><Inbox size={30} aria-hidden="true" /><h3>{title}</h3><div>{children}</div></div> }
+export function Empty({ title, children, headingLevel = 3 }: { title: string; children?: ReactNode; headingLevel?: 2 | 3 }) { const Heading = headingLevel === 2 ? 'h2' : 'h3'; return <div className="empty"><Inbox size={30} aria-hidden="true" /><Heading>{title}</Heading><div>{children}</div></div> }
 export function Separator() { return <AriaSeparator className="separator" /> }
 export function Skeleton({ className }: { className?: string }) { return <div aria-hidden="true" className={cn('skeleton', className)} /> }
 export function Spinner(props: ComponentProps<typeof LoaderCircle>) { return <LoaderCircle className="spinner" aria-hidden="true" {...props} /> }
