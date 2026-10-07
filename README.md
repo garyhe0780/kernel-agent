@@ -1,6 +1,8 @@
 # Kernel
 
-A reusable foundation for agents to build and operate business applications, with human interfaces and structured agent access backed by the same domain rules.
+The runtime for your whole team — including agents.
+
+Define your business once. Give people and agents the interfaces, rules, and workflows to run it together.
 
 CRM and project management are reference applications. The built-in planner assembles applications from a fixed catalog. External builder agents can also author validated custom definitions over MCP. Operational changes require human review by default; owners can explicitly grant automatic execution for selected operations.
 

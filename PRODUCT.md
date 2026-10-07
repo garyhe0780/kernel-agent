@@ -20,7 +20,9 @@ The built-in planner remains catalog-based; external builders can use the suppor
 
 ## Positioning
 
-Build the tools your business needs. Let agents help run them.
+The runtime for your whole team — including agents.
+
+Define your business once. Give people and agents the interfaces, rules, and workflows to run it together.
 
 NocoBase is a competitive reference, not a feature-parity claim. The intended differentiation is one connected experience for creating, operating, and evolving a business application. Agent access alone is not unique: NocoBase also supports AI-assisted building and operational agents.
 
